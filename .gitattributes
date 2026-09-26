@@ -1,0 +1,25 @@
+# Normalise line endings in the repository.
+#
+# Without this, Windows checkouts rewrite every file to CRLF on the next
+# commit. That produced a commit of 4,462 insertions against 4,462 deletions
+# across fifteen files with no semantic change at all — noise that buries real
+# changes in history and makes `git blame` useless.
+#
+# `text=auto` stores text as LF in the repository regardless of the platform
+# that commits it, so a diff shows only what actually changed.
+* text=auto eol=lf
+
+# Explicitly binary. These must never be line-ending translated or diffed as
+# text, and the images under public/ and docs/screenshots/ are read by the
+# README and the build.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+
+# Lockfiles are generated; keep them out of merge conflicts.
+package-lock.json -diff linguist-generated
