@@ -530,8 +530,21 @@ export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
  * blog page by the wrong length norms.
  */
 function kindForPlatform(platform: Platform): ContentAsset['kind'] {
-  if (platform === 'youtube' || platform === 'vimeo' || platform === 'tiktok') return 'video';
+  if (platform === 'youtube' || platform === 'vimeo') return 'video';
   if (platform === 'spotify') return 'brand_message';
+  // Social platforms are posts, not articles. Labelling an x.com link as an
+  // "article" judged it against article length norms, which is wrong twice over:
+  // the text is short by nature, and the whole point of a social post is that it
+  // has to work in a few lines.
+  if (
+    platform === 'x' ||
+    platform === 'linkedin' ||
+    platform === 'instagram' ||
+    platform === 'facebook' ||
+    platform === 'tiktok'
+  ) {
+    return 'social_post';
+  }
   return 'article';
 }
 
