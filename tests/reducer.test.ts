@@ -276,4 +276,44 @@ describe('re-simulation through the reducer', () => {
     expect(caveats.join(' ')).toContain('Simulated change');
     expect(caveats.join(' ')).toContain('Not representative of any real population');
   });
+
+  it('re-simulates statelessly when the stored record is gone', async () => {
+    // Serverless instances do not share memory, so the record from run A may not
+    // exist on the instance that serves the re-simulation. The client echoes the
+    // context back and the run must still complete with a controlled comparison.
+    const { events } = await realRun();
+    const state = fold(events);
+    expect(state.audience).not.toBeNull();
+    expect(state.dna).not.toBeNull();
+    expect(state.versionB).not.toBeNull();
+    expect(state.metricsA).not.toBeNull();
+
+    const resimEvents: RunEvent[] = [];
+    for await (const event of resimulatePipeline({
+      runId: 'run_that_was_never_stored',
+      context: {
+        audience: state.audience!,
+        dna: state.dna!,
+        versionBAsset: state.versionB!,
+        metricsA: state.metricsA!,
+        rounds: 2,
+      },
+    })) {
+      resimEvents.push(event);
+    }
+
+    const after = fold([...events, ...resimEvents]);
+    expect(after.comparison).not.toBeNull();
+    expect(after.comparison?.samePopulation).toBe(true);
+    expect(after.failure).toBeNull();
+  });
+
+  it('fails clearly when the record is gone and no context was supplied', async () => {
+    const failures: RunEvent[] = [];
+    for await (const event of resimulatePipeline({ runId: 'run_missing' })) failures.push(event);
+
+    const failed = failures.find((e) => e.type === 'run_failed');
+    expect(failed).toBeDefined();
+    expect(failed?.type === 'run_failed' ? failed.code : null).toBe('STORE_UNAVAILABLE');
+  });
 });

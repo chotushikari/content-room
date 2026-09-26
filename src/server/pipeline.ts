@@ -6,6 +6,7 @@ import {
   type Audience,
   type Comparison,
   type ContentAsset,
+  type ContentDNA,
   type CreateRunRequest,
   type CreativeBrief,
   type EngineId,
@@ -355,23 +356,39 @@ function pickStratifiedSample(events: AgentEvent[], audience: Audience): string[
  */
 export async function* resimulatePipeline(opts: {
   runId: string;
+  /** Used when the in-memory record is gone (serverless instances do not share memory). */
+  context?: {
+    audience: Audience;
+    dna: ContentDNA;
+    versionBAsset: ContentAsset;
+    metricsA: MetricsBundle;
+    rounds: number;
+  };
   signal?: AbortSignal;
 }): AsyncGenerator<RunEvent> {
   const store = getRunStore();
-  const record = await store.get(opts.runId);
-  if (!record || !record.brief) {
+  const stored = await store.get(opts.runId);
+
+  // Prefer the server's own record. Fall back to the context the client sent
+  // back, which it received from this server in the first place.
+  const audience = stored?.audience ?? opts.context?.audience;
+  const dna = stored?.dna ?? opts.context?.dna;
+  const versionB = stored?.brief?.versionB ?? opts.context?.versionBAsset;
+  const metricsA = stored?.metrics ?? opts.context?.metricsA;
+  const rounds = stored?.run.rounds ?? opts.context?.rounds;
+  const runAId = stored?.run.id ?? opts.runId;
+
+  if (!audience || !dna || !versionB || !metricsA || !rounds) {
     yield {
       type: 'run_failed',
       stage: 'resimulate',
-      code: 'INTERNAL',
-      message: 'That run is no longer available in this session.',
+      code: 'STORE_UNAVAILABLE',
+      message:
+        'The original run is no longer available on this instance. Run it again to re-simulate.',
       recovered: false,
     };
     return;
   }
-
-  const { audience, brief } = record;
-  const versionB = brief.versionB;
 
   // Version B is simulated against its OWN Content DNA, not Version A's.
   //
@@ -418,7 +435,7 @@ export async function* resimulatePipeline(opts: {
         asset: versionB,
         dna: dnaB,
         audience,
-        rounds: record.run.rounds,
+        rounds,
         seed: seedB,
         signal: opts.signal,
       },
@@ -435,51 +452,65 @@ export async function* resimulatePipeline(opts: {
       runId: runBId,
       events: eventsB,
       audience,
-      rounds: record.run.rounds,
+      rounds,
     });
     yield { type: 'metrics_ready', metrics: metricsB, label: 'B' };
 
     const comparison: Comparison = compare({
-      runA: record.run.id,
+      runA: runAId,
       runB: runBId,
-      metricsA: record.metrics,
+      metricsA,
       metricsB,
-      audienceRefA: record.run.audienceRef,
+      audienceRefA: audience.ref,
       audienceRefB: recheck,
       reproducibility: 'deterministic',
     });
     yield { type: 'comparison_ready', comparison };
 
-    const updated: RunRecord = {
-      ...record,
-      versionBRun: {
-        id: runBId,
-        label: 'B',
-        contentHash: versionB.contentHash,
-        audienceRef: recheck,
-        engineId: engine.id,
-        engineVersion: engine.version,
-        reproducibility: 'deterministic',
-        status: 'completed',
-        rounds: record.run.rounds,
-        seed: seedB,
-        startedAt,
-        endedAt: new Date().toISOString(),
-      },
-      versionBEvents: eventsB,
-      versionBMetrics: metricsB,
-      comparison,
-      versionBAsset: versionB,
-      versionBAudience: record.audience.agents,
-      providers: [...record.providers, ...chain.providerUsage()],
+    const runB = {
+      id: runBId,
+      label: 'B' as const,
+      contentHash: versionB.contentHash,
+      audienceRef: recheck,
+      engineId: engine.id,
+      engineVersion: engine.version,
+      reproducibility: 'deterministic' as const,
+      status: 'completed' as const,
+      rounds,
+      seed: seedB,
+      startedAt,
+      endedAt: new Date().toISOString(),
     };
-    await store.save(updated);
+
+    // Persist the completed record when we have one to extend. Without a stored
+    // record there is no partial record worth writing, and a fabricated one
+    // would be worse than none.
+    if (stored) {
+      const updated: RunRecord = {
+        ...stored,
+        versionBRun: runB,
+        versionBEvents: eventsB,
+        versionBMetrics: metricsB,
+        comparison,
+        versionBAsset: versionB,
+        versionBAudience: audience.agents,
+        providers: [...stored.providers, ...chain.providerUsage()],
+      };
+      await store.save(updated);
+      yield {
+        type: 'run_completed',
+        mode: updated.mode,
+        providers: chain.providerUsage(),
+        validation: updated.validation,
+      };
+      return;
+    }
 
     yield {
       type: 'run_completed',
-      mode: updated.mode,
+      mode: chain.mode(),
       providers: chain.providerUsage(),
-      validation: updated.validation,
+      validation: NOT_ESTABLISHED,
     };
   } catch (error) {
     if (opts.signal?.aborted) {

@@ -1,10 +1,34 @@
 'use client';
 
 import { useCallback, useMemo, useRef, useState } from 'react';
-import type { CreateRunRequest, RunEvent } from '../core/domain';
+import type {
+  Audience,
+  ContentAsset,
+  ContentDNA,
+  CreateRunRequest,
+  MetricsBundle,
+  RunEvent,
+} from '../core/domain';
 import { RunEventLog, type EventEnvelope } from './event-log';
 import { initialRunState, runReducer, type RunViewState } from './run-reducer';
 import { readRunStream } from './sse';
+
+/**
+ * What the client sends back with a re-simulation request.
+ *
+ * Serverless instances do not share memory, so the record written by run A may
+ * not be present when the re-simulation runs. Every field here was produced by
+ * the server and delivered over the event stream, so the client is only echoing
+ * it back — and the server re-derives the population hash and asserts it, so the
+ * controlled-comparison guarantee does not depend on trusting this payload.
+ */
+export type ResimulateContext = {
+  audience: Audience;
+  dna: ContentDNA;
+  versionBAsset: ContentAsset;
+  metricsA: MetricsBundle;
+  rounds: number;
+};
 
 /**
  * The single subscription point for a run.
@@ -26,7 +50,7 @@ export type UseRunStream = {
   log: RunEventLog;
   error: string | null;
   start: (request: CreateRunRequest) => Promise<void>;
-  resimulate: (runId: string) => Promise<void>;
+  resimulate: (runId: string, context: ResimulateContext) => Promise<void>;
   cancel: () => void;
   reset: () => void;
 };
@@ -122,7 +146,7 @@ export function useRunStream(): UseRunStream {
   );
 
   const resimulate = useCallback(
-    async (runId: string) => {
+    async (runId: string, context: ResimulateContext) => {
       const controller = new AbortController();
       abortRef.current = controller;
       setError(null);
@@ -132,7 +156,7 @@ export function useRunStream(): UseRunStream {
         const response = await fetch(`/api/runs/${encodeURIComponent(runId)}/resimulate`, {
           method: 'POST',
           headers: { 'content-type': 'application/json' },
-          body: JSON.stringify({ runId }),
+          body: JSON.stringify({ runId, context }),
           signal: controller.signal,
         });
 

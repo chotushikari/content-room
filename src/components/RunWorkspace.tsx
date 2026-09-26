@@ -150,8 +150,29 @@ export function RunWorkspace() {
                 </div>
                 <button
                   type="button"
-                  onClick={() => void resimulate(state.runId ?? '')}
-                  disabled={state.resimulating || !state.runId}
+                  onClick={() => {
+                    // Send back what this server told us over the event stream,
+                    // so the re-simulation still works when a different
+                    // serverless instance serves the request.
+                    if (!state.runId || !state.audience || !state.dna || !state.versionB || !state.metricsA) {
+                      return;
+                    }
+                    void resimulate(state.runId, {
+                      audience: state.audience,
+                      dna: state.dna,
+                      versionBAsset: state.versionB,
+                      metricsA: state.metricsA,
+                      rounds: state.ofRounds || 3,
+                    });
+                  }}
+                  disabled={
+                    state.resimulating ||
+                    !state.runId ||
+                    !state.audience ||
+                    !state.dna ||
+                    !state.versionB ||
+                    !state.metricsA
+                  }
                   className={cn(
                     'focus-ring shrink-0 rounded border px-3.5 py-2 text-sm font-medium transition-colors',
                     state.resimulating

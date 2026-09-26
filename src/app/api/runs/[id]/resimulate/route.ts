@@ -6,6 +6,15 @@ export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 export const maxDuration = 120;
 
+/**
+ * Re-simulate Version B against the same audience.
+ *
+ * Accepts an optional context payload because serverless instances do not share
+ * memory: the record written by run A may not exist on the instance that serves
+ * this request. The client sends back what this server already told it, and the
+ * pipeline still re-derives and asserts the population hash, so the controlled-
+ * comparison guarantee does not rest on trusting the payload.
+ */
 export async function POST(
   request: Request,
   { params }: { params: Promise<{ id: string }> },
@@ -27,6 +36,11 @@ export async function POST(
     );
   }
 
-  const generator = resimulatePipeline({ runId: id, signal: request.signal });
+  const generator = resimulatePipeline({
+    runId: id,
+    context: parsed.data.context,
+    signal: request.signal,
+  });
+
   return sseResponse(generator, request.signal);
 }

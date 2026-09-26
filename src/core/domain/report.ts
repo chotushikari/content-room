@@ -266,5 +266,28 @@ export type CreateRunRequest = z.infer<typeof CreateRunRequestSchema>;
 
 export const ResimulateRequestSchema = z.object({
   runId: z.string().min(1),
+  /**
+   * Stateless fallback context.
+   *
+   * Vercel serverless instances do not share memory, so the record written by
+   * run A may not exist when the re-simulation is requested — a cold start, a
+   * second instance, or simply a pause between the two steps is enough to lose
+   * it. Verified in production: back-to-back requests happened to reuse the
+   * instance, which is exactly the kind of luck a live demo must not depend on.
+   *
+   * The client already holds all of this from the event stream, so it sends it
+   * back and the server can run the comparison without the original record. The
+   * population hash is still re-derived and asserted, so the controlled-
+   * comparison guarantee does not depend on trusting this payload.
+   */
+  context: z
+    .object({
+      audience: AudienceSchema,
+      dna: ContentDNASchema,
+      versionBAsset: ContentAssetSchema,
+      metricsA: MetricsBundleSchema,
+      rounds: z.number().int().min(1).max(6),
+    })
+    .optional(),
 });
 export type ResimulateRequest = z.infer<typeof ResimulateRequestSchema>;
