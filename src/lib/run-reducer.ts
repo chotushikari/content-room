@@ -66,6 +66,8 @@ export type RunViewState = {
   why: WhyReport | null;
   brief: CreativeBrief | null;
   versionB: ContentAsset | null;
+  /** Version B's own DNA, so the "after" verdict describes the rewrite. */
+  versionBDna: ContentDNA | null;
   comparison: Comparison | null;
 
   /** Provisional, from run_started: what is CONFIGURED. */
@@ -99,6 +101,7 @@ export const initialRunState: RunViewState = {
   why: null,
   brief: null,
   versionB: null,
+  versionBDna: null,
   comparison: null,
   provisionalMode: null,
   mode: null,
@@ -218,7 +221,7 @@ export function runReducer(state: RunViewState, envelope: EventEnvelope): RunVie
       return { ...base, brief: event.brief };
 
     case 'versionb_ready':
-      return { ...base, versionB: event.asset };
+      return { ...base, versionB: event.asset, versionBDna: event.dna };
 
     case 'comparison_ready':
       return { ...base, comparison: event.comparison, resimulating: false };

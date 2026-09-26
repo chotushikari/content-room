@@ -215,7 +215,13 @@ export const RunEventSchema = z.discriminatedUnion('type', [
   z.object({ type: z.literal('metrics_ready'), metrics: MetricsBundleSchema, label: z.enum(['A', 'B']) }),
   z.object({ type: z.literal('why_ready'), why: WhyReportSchema }),
   z.object({ type: z.literal('brief_ready'), brief: CreativeBriefSchema }),
-  z.object({ type: z.literal('versionb_ready'), asset: ContentAssetSchema }),
+  /**
+   * Carries Version B's OWN DNA alongside the asset, so the interface can show a
+   * verdict about the rewritten content rather than reusing Version A's reading.
+   * Without it the "after" verdict would describe the original's frictions —
+   * the ones the rewrite just removed.
+   */
+  z.object({ type: z.literal('versionb_ready'), asset: ContentAssetSchema, dna: ContentDNASchema }),
   z.object({ type: z.literal('resim_event'), event: AgentEventSchema }),
   z.object({ type: z.literal('comparison_ready'), comparison: ComparisonSchema }),
   z.object({ type: z.literal('heartbeat'), at: z.string() }),

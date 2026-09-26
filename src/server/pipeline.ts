@@ -264,7 +264,7 @@ export async function* runPipeline(opts: {
       changes: rewrite.changes,
     };
     yield { type: 'brief_ready', brief };
-    yield { type: 'versionb_ready', asset: rewrite.versionB };
+    yield { type: 'versionb_ready', asset: rewrite.versionB, dna: heuristicDNA(rewrite.versionB) };
 
     const mode = chain.mode();
     const validation: ValidationStatus = NOT_ESTABLISHED;
@@ -425,7 +425,7 @@ export async function* resimulatePipeline(opts: {
     // No dna_ready for B: the DNA station shows the original content's reading,
     // and overwriting it mid-comparison would be confusing. Version B's DNA is
     // used for the simulation only.
-    yield { type: 'versionb_ready', asset: versionB };
+    yield { type: 'versionb_ready', asset: versionB, dna: dnaB };
 
     const engine = deterministicEngine;
     const eventsB: AgentEvent[] = [];

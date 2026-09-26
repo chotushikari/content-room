@@ -1,8 +1,7 @@
 'use client';
 
-import { useMemo } from 'react';
+import { useMemo, useState } from 'react';
 import { useRunStream } from '../lib/use-run-stream';
-import { isUnlocked } from '../lib/run-reducer';
 import { cn } from '../lib/cn';
 import { ModeBadge, Panel } from './ui';
 import { StageRail } from './StageRail';
@@ -13,18 +12,25 @@ import { TheRoom } from './room/TheRoom';
 import { AudiencePanel, ContentPanel, DnaPanel } from './panels/ContentPanels';
 import { MetricsPanel, WhyPanel } from './panels/IntelligencePanels';
 import { BriefPanel, ComparisonPanel } from './panels/StrategyPanels';
-import type { ContentKind } from '../core/domain';
+import { VerdictView } from './VerdictView';
 
 /**
- * The run workspace.
+ * The workspace.
  *
- * Every panel here is a projection of a single event-sourced state object. The
- * order in which panels appear is decided by which events have arrived, not by a
- * step counter — so the interface cannot show a result before the event that
- * produced it, and the console beside it always shows why anything is on screen.
+ * Two views over one event-sourced state:
+ *
+ *  - **Verdict** (default): one score, one paragraph of opinion, one list of
+ *    changes, and whether it will spread. This is the product.
+ *  - **Detail**: the room, the per-metric tables, the evidence chain, the raw
+ *    event console. This is the justification, and it is one click away rather
+ *    than in the user's face.
+ *
+ * Both are projections of the same reducer state, so switching between them
+ * cannot produce different answers.
  */
 export function RunWorkspace() {
   const { state, entries, error, start, resimulate, cancel, reset } = useRunStream();
+  const [view, setView] = useState<'verdict' | 'detail'>('verdict');
 
   const agentLabels = useMemo(() => {
     const map: Record<string, string> = {};
@@ -33,27 +39,48 @@ export function RunWorkspace() {
   }, [state.audience]);
 
   const hasRun = entries.length > 0;
-  const showRoom = isUnlocked(state, 'room');
+  const busy = state.running || state.resimulating;
+
+  const canResimulate =
+    Boolean(state.runId && state.audience && state.dna && state.versionB && state.metricsA) &&
+    !state.comparison;
+
+  function runResimulation() {
+    if (!state.runId || !state.audience || !state.dna || !state.versionB || !state.metricsA) return;
+    void resimulate(state.runId, {
+      audience: state.audience,
+      dna: state.dna,
+      versionBAsset: state.versionB,
+      metricsA: state.metricsA,
+      rounds: state.ofRounds || 3,
+    });
+  }
 
   return (
-    <main className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8">
-      {/* ------------------------------------------------------------ header */}
+    <main className="mx-auto w-full max-w-[1180px] px-4 py-6 sm:px-6 lg:px-8">
       <header className="flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
           <span className="font-mono text-xs tracking-[0.18em] text-muted uppercase">
             Content Room
           </span>
-          <span className="hidden text-2xs text-subtle sm:inline">
-            rehearse before you publish
-          </span>
+          <span className="hidden text-2xs text-subtle sm:inline">rehearse before you publish</span>
         </div>
         <div className="flex items-center gap-2">
           <ModeBadge
             mode={state.mode}
             provisional={state.provisionalMode}
             providers={state.providers}
-            running={state.running || state.resimulating}
+            running={busy}
           />
+          {hasRun ? (
+            <button
+              type="button"
+              onClick={() => setView((v) => (v === 'verdict' ? 'detail' : 'verdict'))}
+              className="focus-ring rounded border border-line px-2 py-1 font-mono text-3xs uppercase tracking-wider text-subtle hover:text-fg"
+            >
+              {view === 'verdict' ? 'show detail' : 'show verdict'}
+            </button>
+          ) : null}
           {hasRun ? (
             <button
               type="button"
@@ -63,7 +90,7 @@ export function RunWorkspace() {
               new run
             </button>
           ) : null}
-          {state.running || state.resimulating ? (
+          {busy ? (
             <button
               type="button"
               onClick={cancel}
@@ -86,7 +113,6 @@ export function RunWorkspace() {
         </div>
       ) : null}
 
-      {/* --------------------------------------------------------- error bar */}
       {error ? (
         <Panel className="mt-4 border-negative/40 bg-negative/5 px-4 py-3">
           <p className="text-xs leading-relaxed text-negative">{error}</p>
@@ -94,12 +120,14 @@ export function RunWorkspace() {
       ) : null}
       {state.failure ? (
         <Panel className="mt-4 border-caution/40 bg-caution/5 px-4 py-3">
-          <p className="micro">run_failed · {state.failure.code} at {state.failure.stage}</p>
+          <p className="micro">
+            {state.failure.code} at {state.failure.stage}
+          </p>
           <p className="mt-1 text-xs leading-relaxed text-caution">{state.failure.message}</p>
         </Panel>
       ) : null}
 
-      {/* ------------------------------------------------------------ start */}
+      {/* ------------------------------------------------------------- start */}
       {!hasRun ? (
         <div className="mt-6">
           <StartPanel
@@ -107,110 +135,90 @@ export function RunWorkspace() {
             running={state.running}
             resimulating={state.resimulating}
           />
-          <p className="mx-auto mt-4 max-w-3xl text-center note">
+          <p className="mx-auto mt-4 max-w-2xl text-center note">
             A synthetic audience rehearsal system. Not a prediction of real-world performance, and
             not a substitute for audience research.
           </p>
         </div>
       ) : null}
 
-      {/* ------------------------------------------------------------- room */}
-      {showRoom ? (
-        <div className="mt-5 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <TheRoom state={state} className="min-h-[420px] min-w-0" />
-          <div className="flex min-h-0 min-w-0 flex-col gap-4">
-            <EventFeed entries={entries} agentLabels={agentLabels} className="min-h-[280px] max-h-[420px]" />
-            <EventLedger entries={entries} />
-          </div>
+      {/* ----------------------------------------------------------- verdict */}
+      {hasRun && view === 'verdict' ? (
+        <div className="mt-5">
+          <VerdictView state={state} onShowDetail={() => setView('detail')} />
+
+          {canResimulate ? (
+            <Panel className="mt-4 flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
+              <div className="min-w-0">
+                <p className="text-sm font-medium">Test the improved version</p>
+                <p className="mt-0.5 text-xs leading-relaxed text-muted">
+                  Run the rewritten content past the exact same {state.audience?.size ?? 0} simulated
+                  people, so the difference is the content and not the audience.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={runResimulation}
+                disabled={state.resimulating}
+                className={cn(
+                  'focus-ring shrink-0 rounded border px-4 py-2 text-sm font-medium transition-colors',
+                  state.resimulating
+                    ? 'cursor-not-allowed border-line text-subtle'
+                    : 'border-accent/60 bg-accent/15 text-fg hover:bg-accent/25',
+                )}
+              >
+                {state.resimulating ? 'Testing…' : 'Test it'}
+              </button>
+            </Panel>
+          ) : null}
         </div>
       ) : null}
 
-      {/* --------------------------------------------- panels + console rail */}
-      {hasRun ? (
-        <div className="mt-4 grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_360px]">
-          <div className="flex min-w-0 flex-col gap-4">
-            {state.asset ? (
-              <ContentPanel asset={state.asset} note={state.ingestNote} />
-            ) : null}
-            {state.dna ? <DnaPanel dna={state.dna} /> : null}
-            {state.audience ? <AudiencePanel audience={state.audience} /> : null}
-            {state.metricsA ? <MetricsPanel metrics={state.metricsA} label="A" /> : null}
-            {state.why ? <WhyPanel why={state.why} /> : null}
-            {state.brief ? <BriefPanel brief={state.brief} /> : null}
-
-            {/* The re-test is a deliberate action, so it is a deliberate click. */}
-            {state.brief && !state.comparison ? (
-              <Panel className="flex flex-wrap items-center justify-between gap-3 px-4 py-3">
-                <div className="min-w-0">
-                  <p className="text-sm font-medium">Same audience, new content</p>
-                  <p className="mt-0.5 text-xs leading-relaxed text-muted">
-                    Re-run the identical synthetic population against Version B. The population hash
-                    is asserted, not assumed — if the audience changed, the comparison is refused.
-                  </p>
-                </div>
-                <button
-                  type="button"
-                  onClick={() => {
-                    // Send back what this server told us over the event stream,
-                    // so the re-simulation still works when a different
-                    // serverless instance serves the request.
-                    if (!state.runId || !state.audience || !state.dna || !state.versionB || !state.metricsA) {
-                      return;
-                    }
-                    void resimulate(state.runId, {
-                      audience: state.audience,
-                      dna: state.dna,
-                      versionBAsset: state.versionB,
-                      metricsA: state.metricsA,
-                      rounds: state.ofRounds || 3,
-                    });
-                  }}
-                  disabled={
-                    state.resimulating ||
-                    !state.runId ||
-                    !state.audience ||
-                    !state.dna ||
-                    !state.versionB ||
-                    !state.metricsA
-                  }
-                  className={cn(
-                    'focus-ring shrink-0 rounded border px-3.5 py-2 text-sm font-medium transition-colors',
-                    state.resimulating
-                      ? 'cursor-not-allowed border-line text-subtle'
-                      : 'border-accent/60 bg-accent/15 text-fg hover:bg-accent/25',
-                  )}
-                >
-                  {state.resimulating ? 'Re-simulating…' : 'Re-simulate'}
-                </button>
-              </Panel>
-            ) : null}
-
-            {state.comparison ? <ComparisonPanel comparison={state.comparison} /> : null}
-
-            {state.pass === 'B' && state.metricsB ? (
-              <MetricsPanel metrics={state.metricsB} label="B" />
-            ) : null}
+      {/* ------------------------------------------------------------ detail */}
+      {hasRun && view === 'detail' ? (
+        <div className="mt-5 flex flex-col gap-4">
+          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <TheRoom state={state} className="min-h-[420px] min-w-0" />
+            <div className="flex min-h-0 min-w-0 flex-col gap-4">
+              <EventFeed
+                entries={entries}
+                agentLabels={agentLabels}
+                className="min-h-[280px] max-h-[420px]"
+              />
+              <EventLedger entries={entries} />
+            </div>
           </div>
 
-          <div className="flex min-h-0 min-w-0 flex-col gap-4">
-            <EventConsole
-              entries={entries}
-              running={state.running || state.resimulating}
-              className="min-h-[280px] max-h-[560px] xl:sticky xl:top-4"
-            />
+          <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
+            <div className="flex min-w-0 flex-col gap-4">
+              {state.asset ? <ContentPanel asset={state.asset} note={state.ingestNote} /> : null}
+              {state.dna ? <DnaPanel dna={state.dna} /> : null}
+              {state.audience ? <AudiencePanel audience={state.audience} /> : null}
+              {state.metricsA ? <MetricsPanel metrics={state.metricsA} label="A" /> : null}
+              {state.why ? <WhyPanel why={state.why} /> : null}
+              {state.brief ? <BriefPanel brief={state.brief} /> : null}
+              {state.comparison ? <ComparisonPanel comparison={state.comparison} /> : null}
+              {state.pass === 'B' && state.metricsB ? (
+                <MetricsPanel metrics={state.metricsB} label="B" />
+              ) : null}
+            </div>
+            <div className="flex min-h-0 min-w-0 flex-col gap-4">
+              <EventConsole
+                entries={entries}
+                running={busy}
+                className="min-h-[280px] max-h-[560px] xl:sticky xl:top-4"
+              />
+            </div>
           </div>
         </div>
       ) : null}
 
       <footer className="mt-8 border-t border-line-soft pt-4">
         <p className="note">
-          Synthetic audience agents, not people. Every metric is a simulated estimate and no result
+          Synthetic audience agents, not people. Every number is a simulated estimate and no result
           is representative of any real population. Validation benchmark: being established.
         </p>
       </footer>
     </main>
   );
 }
-
-/** Re-exported for the page, so the kind list stays in one place. */
-export type { ContentKind };

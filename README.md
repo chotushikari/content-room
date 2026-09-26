@@ -108,9 +108,11 @@ npm run demo         # run the Velloe scenario headlessly, print stage timings
 | File | Contents |
 |---|---|
 | [`AGENTS.md`](AGENTS.md) | **Operating contract for contributors. Read this first.** |
+| [`docs/verdict.md`](docs/verdict.md) | **The score, the opinion, the changes, the viral read** |
+| [`docs/api-keys.md`](docs/api-keys.md) | **Which API keys are needed (one, and it is optional)** |
 | [`docs/product.md`](docs/product.md) | What we build, who for, what we refuse to build |
 | [`docs/user-journey.md`](docs/user-journey.md) | The six stations and the screen inventory |
-| [`docs/event-driven-ui.md`](docs/event-driven-ui.md) | **How the interface works: event log → reducer → panels** |
+| [`docs/event-driven-ui.md`](docs/event-driven-ui.md) | How the interface works: event log → reducer → panels |
 | [`docs/architecture.md`](docs/architecture.md) | Layers, data flow, determinism, security, deviations |
 | [`docs/api-contracts.md`](docs/api-contracts.md) | **Frozen domain contracts** — the source of truth |
 | [`docs/research.md`](docs/research.md) | Open-source research with sources for every claim |
