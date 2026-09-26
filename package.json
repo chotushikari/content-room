@@ -2,6 +2,33 @@
   "name": "content-room",
   "version": "0.1.0",
   "private": true,
+  "description": "Rehearse before you publish: put any content in front of a simulated audience, get a score, an opinion, concrete changes, and a controlled same-audience re-test of the rewrite.",
+  "keywords": [
+    "ai",
+    "synthetic-audience",
+    "simulation",
+    "audience-research",
+    "content-testing",
+    "multi-agent",
+    "llm",
+    "nextjs",
+    "typescript",
+    "vercel-ai-sdk",
+    "deterministic-simulation"
+  ],
+  "license": "MIT",
+  "author": "chotushikari",
+  "homepage": "https://content-room-dun.vercel.app",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/chotushikari/content-room.git"
+  },
+  "bugs": {
+    "url": "https://github.com/chotushikari/content-room/issues"
+  },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "dev": "next dev",
     "build": "next build",
@@ -10,7 +37,9 @@
     "test": "vitest run",
     "test:watch": "vitest",
     "demo": "tsx scripts/demo.ts",
-    "preflight": "tsx scripts/preflight.ts"
+    "preflight": "tsx scripts/preflight.ts",
+    "probe": "tsx scripts/probe-model.ts",
+    "verify": "npm run typecheck && npm run test && npm run build"
   },
   "dependencies": {
     "@ai-sdk/google": "^4.0.82",

@@ -13,6 +13,7 @@ import { AudiencePanel, ContentPanel, DnaPanel } from './panels/ContentPanels';
 import { MetricsPanel, WhyPanel } from './panels/IntelligencePanels';
 import { BriefPanel, ComparisonPanel } from './panels/StrategyPanels';
 import { VerdictView } from './VerdictView';
+import { AgentRoster } from './AgentInspector';
 
 /**
  * The workspace.
@@ -30,7 +31,8 @@ import { VerdictView } from './VerdictView';
  */
 export function RunWorkspace() {
   const { state, entries, error, start, resimulate, cancel, reset } = useRunStream();
-  const [view, setView] = useState<'verdict' | 'detail'>('verdict');
+  const [view, setView] = useState<'verdict' | 'agents' | 'detail'>('verdict');
+  const [selectedAgentId, setSelectedAgentId] = useState<string | null>(null);
 
   const agentLabels = useMemo(() => {
     const map: Record<string, string> = {};
@@ -73,13 +75,29 @@ export function RunWorkspace() {
             running={busy}
           />
           {hasRun ? (
-            <button
-              type="button"
-              onClick={() => setView((v) => (v === 'verdict' ? 'detail' : 'verdict'))}
-              className="focus-ring rounded border border-line px-2 py-1 font-mono text-3xs uppercase tracking-wider text-subtle hover:text-fg"
-            >
-              {view === 'verdict' ? 'show detail' : 'show verdict'}
-            </button>
+            <nav className="flex items-center gap-1" aria-label="View">
+              {(
+                [
+                  ['verdict', 'Verdict'],
+                  ['agents', 'Agents'],
+                  ['detail', 'Working'],
+                ] as const
+              ).map(([id, label]) => (
+                <button
+                  key={id}
+                  type="button"
+                  onClick={() => setView(id)}
+                  aria-current={view === id}
+                  className={
+                    view === id
+                      ? 'focus-ring rounded border border-accent/60 bg-accent/10 px-2 py-1 font-mono text-3xs uppercase tracking-wider text-accent'
+                      : 'focus-ring rounded border border-line px-2 py-1 font-mono text-3xs uppercase tracking-wider text-subtle hover:text-fg'
+                  }
+                >
+                  {label}
+                </button>
+              ))}
+            </nav>
           ) : null}
           {hasRun ? (
             <button
@@ -174,11 +192,34 @@ export function RunWorkspace() {
         </div>
       ) : null}
 
+      {/* ------------------------------------------------------------ agents */}
+      {hasRun && view === 'agents' ? (
+        <div className="mt-5 flex flex-col gap-4">
+          <AgentRoster
+            state={state}
+            entries={entries}
+            selectedAgentId={selectedAgentId}
+            onSelectAgent={setSelectedAgentId}
+          />
+          <TheRoom
+            state={state}
+            selectedAgentId={selectedAgentId}
+            onSelectAgent={setSelectedAgentId}
+            className="min-h-[360px] min-w-0"
+          />
+        </div>
+      ) : null}
+
       {/* ------------------------------------------------------------ detail */}
       {hasRun && view === 'detail' ? (
         <div className="mt-5 flex flex-col gap-4">
           <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
-            <TheRoom state={state} className="min-h-[420px] min-w-0" />
+            <TheRoom
+              state={state}
+              selectedAgentId={selectedAgentId}
+              onSelectAgent={setSelectedAgentId}
+              className="min-h-[420px] min-w-0"
+            />
             <div className="flex min-h-0 min-w-0 flex-col gap-4">
               <EventFeed
                 entries={entries}

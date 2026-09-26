@@ -129,19 +129,39 @@ export function StartPanel({
               </select>
             </label>
 
-            <label className="block">
+            <div className="block">
               <span className="micro">Audience size — {audienceSize}</span>
               <input
                 type="range"
                 min={8}
-                max={60}
+                max={120}
                 step={2}
                 value={audienceSize}
                 onChange={(e) => setAudienceSize(Number(e.target.value))}
                 className="focus-ring mt-3 w-full accent-[oklch(0.72_0.15_250)]"
+                aria-label="Audience size"
               />
-              <span className="note">More agents means steadier numbers.</span>
-            </label>
+              <div className="mt-2 flex gap-1">
+                {[24, 50, 100].map((preset) => (
+                  <button
+                    key={preset}
+                    type="button"
+                    onClick={() => setAudienceSize(preset)}
+                    className={cn(
+                      'focus-ring rounded border px-2 py-0.5 font-mono text-3xs uppercase tracking-wider transition-colors',
+                      audienceSize === preset
+                        ? 'border-accent/60 bg-accent/10 text-accent'
+                        : 'border-line text-subtle hover:text-fg',
+                    )}
+                  >
+                    {preset}
+                  </button>
+                ))}
+              </div>
+              <span className="note">
+                More agents means steadier numbers. 100 is a supported configuration.
+              </span>
+            </div>
 
             <label className="block">
               <span className="micro">Rounds — {rounds}</span>

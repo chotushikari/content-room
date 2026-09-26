@@ -260,7 +260,7 @@ export const CreateRunRequestSchema = z.object({
   ]),
   options: z
     .object({
-      audienceSize: z.number().int().min(6).max(60).default(24),
+      audienceSize: z.number().int().min(6).max(120).default(24),
       rounds: z.number().int().min(1).max(6).default(3),
       audienceSeed: z.string().max(64).optional(),
       engineId: z.enum(['deterministic', 'oasis']).default('deterministic'),

@@ -1,0 +1,66 @@
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+# Least privilege: CI only needs to read the repository.
+permissions:
+  contents: read
+
+concurrency:
+  group: ${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  verify:
+    name: Typecheck, test, build
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up Node
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22.x'
+          cache: 'npm'
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Typecheck
+        run: npm run typecheck
+
+      - name: Test
+        # The suite is deterministic and offline by design: no network calls and
+        # no model calls, so it needs no secrets and cannot fail for external
+        # reasons. That matters — a test suite that depends on a third party is a
+        # suite that goes red for reasons unrelated to the change.
+        run: npm run test
+
+      - name: Guard against committed secrets
+        run: |
+          set -euo pipefail
+          # Fail the build if anything that looks like a provider key is tracked.
+          if git grep -nE '(AIza[0-9A-Za-z_-]{30,}|gsk_[0-9A-Za-z]{40,}|sk-[A-Za-z0-9]{32,}|AQ\.Ab8[A-Za-z0-9_-]{20,})' -- . ; then
+            echo "::error::A credential appears to be committed. Remove it and rotate the key."
+            exit 1
+          fi
+          if git ls-files --error-unmatch .env.local >/dev/null 2>&1; then
+            echo "::error::.env.local must never be tracked."
+            exit 1
+          fi
+          echo "No credentials found in tracked files."
+
+      - name: Build
+        run: npm run build
+
+      - name: Headless demo run
+        # Runs the whole journey with no API keys, proving the offline path works
+        # in a clean environment rather than only on the author's machine.
+        run: npm run demo

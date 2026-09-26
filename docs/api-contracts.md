@@ -477,7 +477,7 @@ export const CreateRunRequestSchema = z.object({
     z.object({ type: z.literal('fixture'), fixtureId: z.string().min(1) }),
   ]),
   options: z.object({
-    audienceSize: z.number().int().min(6).max(60).default(24),
+      audienceSize: z.number().int().min(6).max(120).default(24),
     rounds: z.number().int().min(1).max(6).default(3),
     audienceSeed: z.string().max(64).optional(),   // omit ⇒ derived from contentHash
     engineId: EngineIdSchema.default('deterministic'),
