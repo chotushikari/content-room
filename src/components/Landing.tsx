@@ -29,7 +29,14 @@ export function Landing({ demoAvailable = true }: { demoAvailable?: boolean }) {
   const trimmed = input.trim();
   const looksLikeUrl = /^https?:\/\/\S+$/i.test(trimmed);
 
-  function go(payload: { source: { type: 'url'; url: string } | { type: 'manual'; kind: ContentKind; body: string } | { type: 'fixture'; fixtureId: string } }) {
+  function go(payload: {
+    source:
+      | { type: 'url'; url: string }
+      // `title` is required by the create-run contract even when empty; omitting
+      // it made the API reject the handoff with INVALID_INPUT.
+      | { type: 'manual'; kind: ContentKind; title: string; body: string }
+      | { type: 'fixture'; fixtureId: string };
+  }) {
     try {
       window.sessionStorage.setItem(PENDING_KEY, JSON.stringify(payload));
     } catch {
@@ -47,7 +54,7 @@ export function Landing({ demoAvailable = true }: { demoAvailable?: boolean }) {
       go({ source: { type: 'url', url: trimmed } });
       return;
     }
-    go({ source: { type: 'manual', kind, body: trimmed } });
+    go({ source: { type: 'manual', kind, title: '', body: trimmed } });
   }
 
   return (
@@ -67,7 +74,10 @@ export function Landing({ demoAvailable = true }: { demoAvailable?: boolean }) {
           <div>
             <p className="label">Synthetic audience rehearsal</p>
             <h1 className="display mt-3 text-[clamp(2.4rem,5.2vw,3.5rem)] text-fg">
-              Rehearse before
+              {/* The explicit space matters: without it the accessible name of the
+                  heading reads "beforeyou", because the line break is presentational
+                  while the text is not. */}
+              Rehearse before{' '}
               <br />
               you publish.
             </h1>
