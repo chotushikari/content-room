@@ -165,6 +165,8 @@ type MetaResult = {
   title?: string;
   description?: string;
   image?: string;
+  /** Alt text. The only part of an image we can read without a vision model. */
+  imageAlt?: string;
   author?: string;
   siteName?: string;
 };
@@ -277,6 +279,7 @@ export function extractMetadata(html: string): MetaResult {
   out.title = find(['og:title', 'twitter:title']) ?? extractTitleTag(html);
   out.description = find(['og:description', 'twitter:description', 'description']);
   out.image = find(['og:image', 'og:image:url', 'twitter:image']);
+  out.imageAlt = find(['og:image:alt', 'twitter:image:alt']);
   out.author = find(['article:author', 'author', 'og:article:author']);
   out.siteName = find(['og:site_name', 'application-name']);
 
@@ -295,12 +298,14 @@ function platformFor(hostname: string): Platform {
   const h = hostname.replace(/^www\./, '');
   if (h.includes('instagram')) return 'instagram';
   if (h.includes('linkedin')) return 'linkedin';
-  if (h === 'x.com' || h.includes('twitter')) return 'x';
+  if (h === 'x.com' || h.includes('twitter') || h === 't.co') return 'x';
   if (h.includes('youtube') || h === 'youtu.be') return 'youtube';
   if (h.includes('tiktok')) return 'tiktok';
+  if (h.includes('threads.net')) return 'x';
   if (h.includes('vimeo')) return 'vimeo';
   if (h.includes('spotify')) return 'spotify';
-  if (h.includes('facebook')) return 'facebook';
+  if (h.includes('facebook') || h === 'fb.com') return 'facebook';
+  if (h.includes('reddit')) return 'web';
   return 'web';
 }
 
@@ -375,22 +380,59 @@ export type ImportResult = {
 };
 
 /**
- * Platforms whose terms prohibit automated reading.
+ * Platforms where server-side reading does not work.
  *
- * We do NOT fetch these at all. Instagram's robots.txt prohibits collection by
- * automated means without written permission, and LinkedIn and Facebook are the
- * same in practice. Fetching them anyway to scrape a login wall would be both a
- * terms violation and useless — testing showed Instagram returns a bare
- * "Instagram" title and Facebook returns someone's profile name and mangled
- * entities.
+ * Two different reasons, treated the same way because the user experience is
+ * identical — paste the content and we will take it from there:
  *
- * Refusing up front is faster, honest, and sends the user straight to the path
- * that actually works: pasting the content.
+ *  1. TERMS. Instagram, LinkedIn and Facebook prohibit automated reading
+ *     outright, so we do not request the page at all.
+ *
+ *  2. BROKEN. X/Twitter, TikTok and Threads serve a JavaScript shell or a bot
+ *     block to non-browser requests. Verified against the live endpoints: an
+ *     x.com post URL returns HTTP 404 even for the official oEmbed endpoint, and
+ *     TikTok's oEmbed returns an HTML block page instead of JSON. Attempting the
+ *     fetch produces either a hard failure or a few dozen characters of
+ *     boilerplate, and both are worse than saying so plainly.
+ *
+ * The distinction matters for honesty: for group 1 nothing was requested, and
+ * for group 2 the platform refused. The note says which.
  */
-const REFUSED_PLATFORMS = new Set<Platform>(['instagram', 'linkedin', 'facebook']);
+const REFUSED_PLATFORMS = new Set<Platform>([
+  'instagram',
+  'linkedin',
+  'facebook',
+  // x covers both x.com and threads.net — see platformFor.
+  'x',
+  'tiktok',
+]);
+
+const TERMS_PLATFORMS = new Set<Platform>(['instagram', 'linkedin', 'facebook']);
 
 function refusedNote(platform: Platform): string {
-  return `${platform} does not permit automated reading, so we did not request the page. Paste the content and we will take it from there.`;
+  return TERMS_PLATFORMS.has(platform)
+    ? `${platform} does not permit automated reading, so we did not request the page. Paste the post text below and we will analyse it properly.`
+    : `${platform} only serves posts to a logged-in browser, so we could not read it. Paste the post text below and we will analyse it properly.`;
+}
+
+/**
+ * An asset with no readable content, used whenever the import could not resolve
+ * text. Marked `partial` so the interface offers the paste path prominently
+ * instead of presenting an empty analysis as a result.
+ */
+function emptyAsset(url: URL, platform: Platform, reason: string): ContentAsset {
+  const base = {
+    kind: kindForPlatform(platform),
+    source: { type: 'url' as const, url: url.toString(), platform },
+    title: '',
+    body: '',
+    media: [],
+    meta: { platform, unreadable: reason },
+    partial: true,
+    importedBy: `${platform}-unreadable-importer`,
+  };
+  const hash = computeContentHash(base);
+  return { ...base, id: contentAssetId(hash, base.kind), contentHash: hash };
 }
 
 export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
@@ -399,19 +441,8 @@ export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
 
   // Refuse before making any request.
   if (REFUSED_PLATFORMS.has(platform)) {
-    const base = {
-      kind: 'social_post' as const,
-      source: { type: 'url' as const, url: url.toString(), platform },
-      title: '',
-      body: '',
-      media: [],
-      meta: { platform, refused: 'terms' },
-      partial: true,
-      importedBy: `${platform}-refused-importer`,
-    };
-    const hash = computeContentHash(base);
     return {
-      asset: { ...base, id: contentAssetId(hash, base.kind), contentHash: hash },
+      asset: emptyAsset(url, platform, 'refused'),
       note: refusedNote(platform),
     };
   }
@@ -421,14 +452,30 @@ export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
     const response = await fetchWithRedirects(url);
     html = await readCapped(response, MAX_BYTES);
   } catch (error) {
+    // An SSRF rejection stays a hard error — that is a security decision, not a
+    // content problem.
     if (error instanceof UrlBlockedError) throw error;
-    throw new ImportFailedError();
+
+    // Anything else — 403, 404, timeout, unsupported content type, a size cap —
+    // degrades to the paste path rather than failing the run. The user came here
+    // to rehearse their content, and a link we cannot read is not a reason to
+    // give them nothing. Only the mechanism changes.
+    return {
+      asset: emptyAsset(url, platform, 'unreadable'),
+      note: 'We could not read that page. Paste the text below and we will analyse it properly.',
+    };
   }
 
   const meta = extractMetadata(html);
   const kind = kindForPlatform(platform);
 
-  let body = [meta.description, meta.author ? `By ${meta.author}.` : '']
+  let body = [
+    meta.description,
+    // Marked as a description rather than passed off as the author's own words,
+    // so the analysis can use it without the DNA mistaking it for the post text.
+    meta.imageAlt ? `[Image description: ${meta.imageAlt}]` : '',
+    meta.author ? `By ${meta.author}.` : '',
+  ]
     .filter(Boolean)
     .join('\n\n')
     .slice(0, 2000);

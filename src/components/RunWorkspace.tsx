@@ -47,6 +47,21 @@ export function RunWorkspace() {
     Boolean(state.runId && state.audience && state.dna && state.versionB && state.metricsA) &&
     !state.comparison;
 
+  /**
+   * Re-run with pasted text.
+   *
+   * Offered because a social link usually yields a headline and nothing else —
+   * the paste path is the primary route for the content this product is most
+   * useful for, not an error fallback.
+   */
+  function analysePastedText(text: string) {
+    const kind = state.asset?.kind ?? 'social_post';
+    void start({
+      source: { type: 'manual', kind, title: state.asset?.title ?? '', body: text },
+      options: { audienceSize: state.audience?.size ?? 24, rounds: state.ofRounds || 3, engineId: 'deterministic', demoMode: false },
+    });
+  }
+
   function runResimulation() {
     if (!state.runId || !state.audience || !state.dna || !state.versionB || !state.metricsA) return;
     void resimulate(state.runId, {
@@ -165,6 +180,16 @@ export function RunWorkspace() {
         <div className="mt-5">
           <VerdictView state={state} onShowDetail={() => setView('detail')} />
 
+          {state.asset && (state.asset.partial || state.asset.body.trim().length < 200) ? (
+            <div className="mt-4">
+              <ContentPanel
+                asset={state.asset}
+                note={state.ingestNote}
+                onUseContent={analysePastedText}
+              />
+            </div>
+          ) : null}
+
           {canResimulate ? (
             <Panel className="mt-4 flex flex-wrap items-center justify-between gap-3 px-4 py-3.5">
               <div className="min-w-0">
@@ -232,7 +257,13 @@ export function RunWorkspace() {
 
           <div className="grid min-w-0 gap-4 xl:grid-cols-[minmax(0,1fr)_340px]">
             <div className="flex min-w-0 flex-col gap-4">
-              {state.asset ? <ContentPanel asset={state.asset} note={state.ingestNote} /> : null}
+              {state.asset ? (
+                <ContentPanel
+                  asset={state.asset}
+                  note={state.ingestNote}
+                  onUseContent={analysePastedText}
+                />
+              ) : null}
               {state.dna ? <DnaPanel dna={state.dna} /> : null}
               {state.audience ? <AudiencePanel audience={state.audience} /> : null}
               {state.metricsA ? <MetricsPanel metrics={state.metricsA} label="A" /> : null}

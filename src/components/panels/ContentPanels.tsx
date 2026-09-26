@@ -11,32 +11,134 @@ import { Chip, MonoStat, Panel, PanelHeader } from '../ui';
 export function ContentPanel({
   asset,
   note,
+  onUseContent,
   className,
 }: {
   asset: ContentAsset;
   note: string | null;
+  /**
+   * Re-runs the analysis with pasted text.
+   *
+   * Present because most social links cannot be read server-side, so the paste
+   * path is not an error recovery — it is the primary path for exactly the
+   * content this product is most useful for.
+   */
+  onUseContent?: (text: string) => void;
   className?: string;
 }) {
+  const [pasted, setPasted] = useState('');
+  // A thin or empty import is the common case for social links, so the editor is
+  // OPEN by default. A passive note saying "paste the caption" was read by
+  // nobody, and the result looked like the product had failed.
+  const thin = asset.partial || asset.body.trim().length < 200;
+  const [showEditor, setShowEditor] = useState(thin);
+
   return (
     <Panel className={cn('overflow-hidden', className)}>
       <PanelHeader
         title="Content"
         meta={`${asset.kind.replace(/_/g, ' ')} · hash ${asset.contentHash}`}
         event="ingest_resolved"
-        right={asset.partial ? <Chip tone="caution">metadata only</Chip> : <Chip>full content</Chip>}
+        right={
+          thin ? (
+            <Chip tone="caution">
+              {asset.body.trim().length === 0 ? 'nothing read' : 'partial read'}
+            </Chip>
+          ) : (
+            <Chip>full content</Chip>
+          )
+        }
       />
       <div className="px-4 py-3.5">
         {asset.title ? (
           <h3 className="text-sm font-medium leading-snug">{asset.title}</h3>
         ) : null}
+
+        {asset.media.length > 0 ? (
+          <div className="mt-2">
+            <div className="flex flex-wrap gap-2">
+              {asset.media.slice(0, 3).map((m, i) =>
+                m.url ? (
+                  <a
+                    key={i}
+                    href={m.url}
+                    target="_blank"
+                    rel="noreferrer noopener"
+                    className="focus-ring block"
+                  >
+                    {/* eslint-disable-next-line @next/next/no-img-element */}
+                    <img
+                      src={m.url}
+                      alt={m.altText ?? 'Imported image'}
+                      className="h-24 w-auto rounded border border-line object-cover"
+                    />
+                  </a>
+                ) : null,
+              )}
+            </div>
+            {/* Stated plainly rather than left for the user to discover: the
+                analysis reads text, and the models configured for this project
+                are text-only. Guessing at an image would be fabrication. */}
+            <p className="mt-2 note">
+              Images are shown but not read. The analysis uses the caption, the alt text and the
+              surrounding page — add a short description below if the visual matters.
+            </p>
+          </div>
+        ) : null}
+
         <p className="mt-2 whitespace-pre-wrap text-xs leading-relaxed text-muted">
-          {asset.body ? truncate(asset.body, 900) : '(no body text)'}
+          {asset.body ? truncate(asset.body, 900) : '(no text could be read)'}
         </p>
 
         {note ? (
           <p className="mt-3 rounded border border-caution/40 bg-caution/5 px-2.5 py-2 text-xs leading-relaxed text-caution">
             {note}
           </p>
+        ) : null}
+
+        {onUseContent && showEditor ? (
+          <div className="mt-3 rounded border border-line bg-bg/50 px-3 py-3">
+            <label htmlFor="cr-paste" className="micro">
+              Paste the text to analyse it properly
+            </label>
+            <textarea
+              id="cr-paste"
+              value={pasted}
+              onChange={(e) => setPasted(e.target.value)}
+              rows={6}
+              spellCheck={false}
+              placeholder="Paste the caption, post text, script or email body…"
+              className="focus-ring mt-2 w-full resize-y rounded border border-line bg-bg/70 px-3 py-2 text-xs leading-relaxed text-fg placeholder:text-subtle"
+            />
+            <div className="mt-2 flex items-center gap-2">
+              <button
+                type="button"
+                disabled={pasted.trim().length < 10}
+                onClick={() => onUseContent(pasted)}
+                className={cn(
+                  'focus-ring rounded border px-3 py-1.5 text-xs font-medium transition-colors',
+                  pasted.trim().length < 10
+                    ? 'cursor-not-allowed border-line text-subtle'
+                    : 'border-accent/60 bg-accent/15 text-fg hover:bg-accent/25',
+                )}
+              >
+                Analyse this text
+              </button>
+              <span className="note">
+                {pasted.trim().length < 10
+                  ? 'At least a sentence, or the read will be thin.'
+                  : `${pasted.trim().length} characters`}
+              </span>
+            </div>
+          </div>
+        ) : onUseContent ? (
+          <button
+            type="button"
+            onClick={() => setShowEditor(true)}
+            className="focus-ring mt-3 rounded border border-line px-2.5 py-1.5 text-xs text-muted hover:text-fg"
+          >
+            Paste the text instead
+          </button>
         ) : null}
 
         <div className="mt-3 flex flex-wrap items-center gap-1.5">

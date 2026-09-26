@@ -162,25 +162,78 @@ describe('metadata extraction is attribute-order independent', () => {
   });
 });
 
-describe('platforms that prohibit automated reading', () => {
-  // Instagram, LinkedIn and Facebook are not fetched at all. Fetching them to
-  // scrape a login wall would violate their terms and produce nothing useful.
+describe('platforms that cannot be read server-side', () => {
+  // Two different reasons, same outcome for the user: paste the text.
+  //  - TERMS: Instagram, LinkedIn, Facebook prohibit automated reading, so no
+  //    request is made at all.
+  //  - BROKEN: X/Twitter and TikTok serve a JS shell or a bot block. Verified
+  //    live: an x.com post URL returns HTTP 404 even for its oEmbed endpoint,
+  //    and TikTok's oEmbed returns an HTML block page instead of JSON.
   it.each([
-    ['linkedin', 'https://www.linkedin.com/feed/'],
-    ['instagram', 'https://www.instagram.com/p/CabcDEF/'],
-    ['facebook', 'https://www.facebook.com/somepage'],
-  ])('refuses %s without making a request', async (platform, url) => {
+    ['linkedin', 'https://www.linkedin.com/feed/', 'terms'],
+    ['instagram', 'https://www.instagram.com/p/CabcDEF/', 'terms'],
+    ['facebook', 'https://www.facebook.com/somepage', 'terms'],
+    ['x', 'https://x.com/someone/status/1234567890', 'broken'],
+    ['tiktok', 'https://www.tiktok.com/@someone/video/1234567890', 'broken'],
+  ])('refuses %s without making a request (%s)', async (platform, url, reason) => {
     const started = Date.now();
     const { asset, note } = await importFromUrl(url);
     const elapsed = Date.now() - started;
 
-    expect(asset.importedBy).toBe(`${platform}-refused-importer`);
+    expect(asset.importedBy).toBe(`${platform}-unreadable-importer`);
     expect(asset.partial).toBe(true);
     expect(asset.title).toBe('');
+    expect(asset.body).toBe('');
     // No network round-trip happened, so this is effectively instant.
     expect(elapsed).toBeLessThan(500);
-    expect(note).toContain('does not permit automated reading');
-    expect(note).toContain('did not request the page');
+    expect(note).toBeTruthy();
+    expect(note).toContain('Paste');
+
+    if (reason === 'terms') {
+      expect(note).toContain('does not permit automated reading');
+      expect(note).toContain('did not request the page');
+    } else {
+      expect(note).toContain('logged-in browser');
+    }
+  });
+
+  it('degrades an unreadable link to the paste path instead of failing the run', () => {
+    // A 404 page or a timeout used to throw IMPORT_FAILED, which surfaced as a
+    // dead end. A link we cannot read is not a reason to give the user nothing —
+    // only the mechanism changes.
+    return importFromUrl('https://en.wikipedia.org/wiki/ThisPageDoesNotExist_xyz123').then(
+      ({ asset, note }) => {
+        expect(asset.partial).toBe(true);
+        expect(note).toContain('Paste');
+      },
+    );
+  });
+
+  it('still hard-fails an SSRF attempt, because that is a security decision', async () => {
+    await expect(importFromUrl('http://169.254.169.254/latest/meta-data/')).rejects.toBeInstanceOf(
+      UrlBlockedError,
+    );
+  });
+});
+
+describe('image alt text extraction', () => {
+  it('reads image alt text, which is the only part of an image we can use', () => {
+    // The analysis is text-only, so for an image post the alt text is the one
+    // piece of real signal available. It is folded into the body clearly marked
+    // as a description rather than passed off as the author's words.
+    const html = `<meta property="og:image" content="https://example.com/a.png">
+      <meta property="og:image:alt" content="A crowded inbox with one unread message highlighted">
+      <meta name="description" content="Caption text.">`;
+    const meta = extractMetadata(html);
+    expect(meta.imageAlt).toBe('A crowded inbox with one unread message highlighted');
+    expect(meta.image).toBe('https://example.com/a.png');
+  });
+
+  it('accepts twitter:image:alt as a fallback', () => {
+    const meta = extractMetadata(
+      '<meta name="twitter:image:alt" content="Product shot on a desk">',
+    );
+    expect(meta.imageAlt).toBe('Product shot on a desk');
   });
 });
 
