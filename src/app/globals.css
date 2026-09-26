@@ -140,6 +140,29 @@ body {
   border-radius: 2px;
 }
 
+/*
+ * Faint instrumentation grid, behind the room canvas.
+ *
+ * Referenced by TheRoom.tsx. It went missing during the token rewrite, which is
+ * the failure mode of a CSS class: nothing errors, the room simply renders on a
+ * flat field and stops reading as an instrument. Drawn with line colours at low
+ * mix so it never competes with the agents.
+ */
+.grid-field {
+  background-image:
+    linear-gradient(
+      to right,
+      color-mix(in oklab, var(--color-line) 36%, transparent) 1px,
+      transparent 1px
+    ),
+    linear-gradient(
+      to bottom,
+      color-mix(in oklab, var(--color-line) 36%, transparent) 1px,
+      transparent 1px
+    );
+  background-size: 32px 32px;
+}
+
 /* Scrollbars, kept quiet so they do not shout next to the data. */
 .scroll-thin {
   scrollbar-width: thin;

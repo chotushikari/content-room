@@ -1,5 +1,5 @@
-import { RunWorkspace } from '../components/RunWorkspace';
+import { Landing } from '../components/Landing';
 
 export default function Home() {
-  return <RunWorkspace />;
+  return <Landing />;
 }

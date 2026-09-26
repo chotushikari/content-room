@@ -1,7 +1,8 @@
 'use client';
 
-import { useMemo, useState } from 'react';
+import { useEffect, useMemo, useState } from 'react';
 import { useRunStream } from '../lib/use-run-stream';
+import type { CreateRunRequest } from '../core/domain';
 import { cn } from '../lib/cn';
 import { ModeBadge, Panel } from './ui';
 import { StageRail } from './StageRail';
@@ -39,6 +40,34 @@ export function RunWorkspace() {
     for (const a of state.audience?.agents ?? []) map[a.id] = a.label;
     return map;
   }, [state.audience]);
+
+  /**
+   * Pick up the content handed over by the landing page.
+   *
+   * Passed through sessionStorage rather than the URL because pasted content is
+   * routinely longer than a query string will carry. Cleared immediately so a
+   * refresh does not silently re-run it.
+   */
+  useEffect(() => {
+    let pending: unknown = null;
+    try {
+      const raw = window.sessionStorage.getItem('content-room:pending');
+      if (raw) {
+        pending = JSON.parse(raw);
+        window.sessionStorage.removeItem('content-room:pending');
+      }
+    } catch {
+      pending = null;
+    }
+    if (!pending || typeof pending !== 'object' || !('source' in pending)) return;
+    const source = (pending as { source: CreateRunRequest['source'] }).source;
+    void start({
+      source,
+      options: { audienceSize: 24, rounds: 3, engineId: 'deterministic', demoMode: false },
+    });
+    // Runs once on mount; `start` is stable enough for a one-shot handoff.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   const hasRun = entries.length > 0;
   const busy = state.running || state.resimulating;
