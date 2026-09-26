@@ -36,6 +36,17 @@ export type StructuredRequest<T> = {
    */
   deterministic: () => T;
   maxOutputTokens?: number;
+  /**
+   * A provider-scoped model preference.
+   *
+   * Groq enforces rate limits PER MODEL, in independent buckets. A run makes
+   * four sequential calls, and pointing all four at one model exhausted that
+   * model's tokens-per-minute budget — measured in production as "Rate limit
+   * reached for model qwen/qwen3.8-27b", rejected in ~70ms. Spreading the four
+   * tasks across the three text models this key can reach uses three separate
+   * budgets instead of one, which is the actual fix for the observed failures.
+   */
+  modelOverride?: Partial<Record<ProviderId, string>>;
   signal?: AbortSignal;
 };
 

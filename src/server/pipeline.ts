@@ -26,8 +26,18 @@ import { deriveAudienceSeed, makeAudienceRef, makeRunId } from '../core/ids';
 import { deterministicEngine } from '../engines/deterministic/engine';
 import { getEngine } from '../engines/registry';
 import { ProviderChain } from '../providers/chain';
-import { contentDnaRequest, segmentsRequest, whyRequest } from '../providers/tasks';
-import { briefNarrativeRequest } from '../providers/tasks-brief';
+import {
+  composeDnaFromRequest,
+  composeWhyReport,
+  contentDnaRequest,
+  segmentsRequest,
+  whyRequest,
+} from '../providers/tasks';
+import {
+  briefNarrativeRequest,
+  composeBriefNarrative,
+  deterministicNarrative,
+} from '../providers/tasks-brief';
 import { heuristicRewrite, heuristicDNA } from '../providers/deterministic/analysis';
 import { importFromManual, importFromUrl } from '../ingest';
 import { velloeDemoAsset } from '../fixtures/velloe/content';
@@ -162,7 +172,9 @@ export async function* runPipeline(opts: {
     const dnaResult = await chain.generate(
       { ...contentDnaRequest(asset), signal: opts.signal },
     );
-    const dna = dnaResult.value;
+    // The model supplies prose; the strict Content DNA is assembled from it,
+    // with the deterministic reading filling any required field it left empty.
+    const dna = composeDnaFromRequest(dnaResult.value, asset);
     yield { type: 'dna_ready', dna, label: 'A' };
 
     // ------------------------------------------------- audience segments (AI)
@@ -242,13 +254,20 @@ export async function* runPipeline(opts: {
       ...whyRequest(metricsA, dna, audience, sampled),
       signal: opts.signal,
     });
-    const why: WhyReport = whyResult.value;
+    // The model writes the prose; the report is assembled from that prose plus
+    // the metrics we computed, so the strict schema can always be satisfied.
+    const why: WhyReport = composeWhyReport(whyResult.value, metricsA, dna);
     yield { type: 'why_ready', why };
 
     // --------------------------------------------- rewrite + brief narrative
     stage = 'creative_director';
     yield { type: 'stage_changed', stage: 'strategy', label: 'Creative Director' };
     const rewrite = heuristicRewrite(asset);
+    const briefFallback = deterministicNarrative(metricsA, dna, why, {
+      hook: rewrite.hook,
+      cta: rewrite.cta,
+      changes: rewrite.changes,
+    });
     const narrativeResult = await chain.generate({
       ...briefNarrativeRequest(metricsA, dna, why, audience, {
         hook: rewrite.hook,
@@ -258,8 +277,28 @@ export async function* runPipeline(opts: {
       signal: opts.signal,
     });
 
+    // Normalised to exactly three evidence-bearing changes, whether the model
+    // returned two, four, or none that parsed.
+    const narrative = composeBriefNarrative(narrativeResult.value, briefFallback);
+
     const brief: CreativeBrief = {
-      ...narrativeResult.value,
+      strongestSignal: narrative.strongestSignal,
+      biggestRisk: narrative.biggestRisk,
+      highestImpactChange: narrative.highestImpactChange,
+      top3Changes: narrative.top3Changes.map((c) => ({
+        rank: Math.min(3, Math.max(1, c.rank)),
+        change: c.change,
+        expectedEffect: c.expectedEffect,
+        evidence: c.evidenceRefs.slice(0, 4).map((ref, i) => ({
+          id: `ev_ch_${c.rank}_${i}`,
+          kind: 'dna_field' as const,
+          ref,
+          note: c.expectedEffect.slice(0, 220),
+        })),
+      })),
+      recommendedHook: narrative.recommendedHook,
+      recommendedCTA: narrative.recommendedCTA,
+      strategy: narrative.strategy,
       versionB: rewrite.versionB,
       changes: rewrite.changes,
     };

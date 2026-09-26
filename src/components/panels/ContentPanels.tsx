@@ -1,8 +1,10 @@
 'use client';
 
+import { useState } from 'react';
 import type { Audience, ContentAsset, ContentDNA } from '../../core/domain';
 import { ARCHETYPE_LABELS } from '../../core/domain';
 import { cn, truncate } from '../../lib/cn';
+import { getAgentProfile } from '../../lib/agent-avatars';
 import { Chip, MonoStat, Panel, PanelHeader } from '../ui';
 
 /** Station 1 — the content under examination, pinned for the rest of the run. */
@@ -136,6 +138,8 @@ function DnaField({ label, value, span }: { label: string; value: string; span?:
  * reproducibility is a claim the product makes and should be able to show.
  */
 export function AudiencePanel({ audience, className }: { audience: Audience; className?: string }) {
+  const [selectedAgent, setSelectedAgent] = useState<string | null>(null);
+
   const archetypeTally = new Map<string, number>();
   for (const a of audience.agents) {
     archetypeTally.set(a.archetypeId, (archetypeTally.get(a.archetypeId) ?? 0) + 1);
@@ -171,7 +175,7 @@ export function AudiencePanel({ audience, className }: { audience: Audience; cla
         </div>
 
         <div className="bg-surface px-4 py-3">
-          <span className="micro">Archetype mix</span>
+          <span className="micro">Archetype mix & 100 Synthetic Agent Profiles</span>
           <div className="mt-2 grid grid-cols-2 gap-x-4 gap-y-1">
             {[...archetypeTally.entries()]
               .sort((a, b) => b[1] - a[1])
@@ -184,6 +188,48 @@ export function AudiencePanel({ audience, className }: { audience: Audience; cla
                 </div>
               ))}
           </div>
+
+          <div className="mt-3 border-t border-line-soft pt-3">
+            <span className="micro mb-2 block">Synthetic Agent Avatars ({audience.agents.length})</span>
+            <div className="flex flex-wrap gap-1.5 max-h-36 overflow-y-auto pr-1">
+              {audience.agents.map((a, idx) => {
+                const profile = getAgentProfile(a.id || idx);
+                const isSelected = selectedAgent === a.id;
+                return (
+                  <button
+                    key={a.id || idx}
+                    type="button"
+                    title={`${profile.name} — ${profile.role} (${profile.company})`}
+                    onClick={() => setSelectedAgent(isSelected ? null : a.id)}
+                    className={cn(
+                      'relative h-7 w-7 rounded-lg overflow-hidden border transition-all hover:scale-110 focus:outline-none',
+                      isSelected ? 'border-accent ring-2 ring-accent/30' : 'border-line-soft hover:border-accent/60'
+                    )}
+                  >
+                    <img src={profile.avatarUrl} alt={profile.name} className="h-full w-full object-cover" />
+                  </button>
+                );
+              })}
+            </div>
+            {selectedAgent ? (() => {
+              const agentObj = audience.agents.find(a => a.id === selectedAgent);
+              const p = getAgentProfile(selectedAgent);
+              return (
+                <div className="mt-2.5 rounded-lg border border-accent/30 bg-accent/5 p-2.5 text-xs flex items-center gap-3 animate-enter">
+                  <img src={p.avatarUrl} alt={p.name} className="h-9 w-9 rounded-lg border border-accent/40" />
+                  <div className="min-w-0 flex-1">
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-semibold text-fg">{p.name}</span>
+                      <span className="font-mono text-3xs text-accent uppercase">Synthetic Agent</span>
+                    </div>
+                    <p className="text-3xs text-muted truncate">{p.role} @ {p.company}</p>
+                    <p className="text-3xs text-subtle mt-0.5">{agentObj?.label || 'Synthetic Audience Member'}</p>
+                  </div>
+                </div>
+              );
+            })() : null}
+          </div>
+
           <p className="mt-3 note">
             Synthetic agents, not people. Traits are derived from a seeded archetype library, so the
             same seed always rebuilds the same population — which is what makes the Version A/B

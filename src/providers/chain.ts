@@ -32,11 +32,55 @@ function classify(error: unknown): FailureClass {
   if (/credit|billing|permission|unauthor|invalid api key|api key not valid/.test(message)) {
     return 'quarantine';
   }
-  if (/invalid json schema|schema|no longer available|not found|model_not_found/.test(message)) {
-    return 'skip';
+  /**
+   * A GENERATION failure is stochastic; a SCHEMA DEFINITION failure is not.
+   *
+   * "Failed to generate JSON" and "response did not match schema" mean the model
+   * produced something malformed this time. The same request often succeeds on
+   * the next attempt, so these are retried — measured at roughly 2-of-4 tasks
+   * succeeding per attempt, which means a retry roughly doubles the live rate.
+   *
+   * "invalid JSON schema for response_format" is different: the schema we sent is
+   * itself unacceptable to the provider, so every attempt fails identically and a
+   * retry only costs latency.
+   */
+  if (/invalid json schema for response_format/.test(message)) return 'skip';
+  if (/no object generated|did not match schema|failed to generate json|no longer available|not found|model_not_found/.test(message)) {
+    return 'retry';
   }
   return 'retry';
 }
+
+/**
+ * How long to wait before retrying a rate-limited request.
+ *
+ * A run makes four sequential model calls, which on a free tier is enough to hit
+ * a tokens-per-minute ceiling on the largest one — observed in production, where
+ * content_dna, audience_segments and why_report all succeeded on Groq and the
+ * brief (the biggest prompt) was rate-limited and fell through to the
+ * deterministic tier, taking the whole run's badge to "degraded" with it.
+ *
+ * Retrying immediately would hit the same limit, so the provider's own
+ * `Retry-After` is honoured when present. The wait is capped so a generous
+ * header cannot stall a demo.
+ */
+const MAX_BACKOFF_MS = 6000;
+
+function backoffMs(error: unknown): number {
+  const headers = (error as { responseHeaders?: Record<string, string> })?.responseHeaders;
+  const raw = headers?.['retry-after'] ?? headers?.['Retry-After'];
+  if (raw) {
+    const seconds = Number.parseFloat(raw);
+    if (Number.isFinite(seconds) && seconds > 0) {
+      return Math.min(MAX_BACKOFF_MS, Math.ceil(seconds * 1000));
+    }
+  }
+  // No header: a short, bounded wait. Long enough to clear a per-minute window
+  // edge, short enough that a user does not notice.
+  return 1500;
+}
+
+const sleep = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
 /**
  * The provider chain: live -> fallback -> deterministic heuristic.
@@ -94,6 +138,9 @@ export class ProviderChain {
             break;
           }
           if (attempt === 1) break; // transient and still failing: demote
+          // Rate-limited or transient: wait as long as the provider asked for
+          // before the single retry, rather than retrying into the same wall.
+          await sleep(backoffMs(error));
         }
       }
     }

@@ -105,7 +105,8 @@ function makeLiveProvider(config: LiveConfig): ModelProvider {
         config.load(),
       ]);
 
-      const model = makeModel(config.modelId) as Parameters<typeof generateText>[0]['model'];
+      const modelId = req.modelOverride?.[config.id] ?? config.modelId;
+      const model = makeModel(modelId) as Parameters<typeof generateText>[0]['model'];
 
       const result = await generateText({
         model,
@@ -114,6 +115,16 @@ function makeLiveProvider(config: LiveConfig): ModelProvider {
         prompt: req.prompt,
         maxOutputTokens: req.maxOutputTokens ?? 2048,
         abortSignal: req.signal,
+        /**
+         * The SDK's own retry is DISABLED so the chain owns retry policy.
+         *
+         * Left at its default of 2, a provider failure produced nested retries —
+         * two inside the SDK times one in the chain — which meant up to four
+         * attempts and roughly 14 seconds before the deterministic tier was
+         * reached, on a path that was going to fail anyway. One place decides
+         * retries, and it is the one that knows about the other providers.
+         */
+        maxRetries: 0,
         ...(config.providerOptions ? { providerOptions: config.providerOptions } : {}),
       } as Parameters<typeof generateText>[0]);
 
@@ -124,7 +135,7 @@ function makeLiveProvider(config: LiveConfig): ModelProvider {
       return {
         value,
         providerId: config.id,
-        modelId: config.modelId,
+        modelId,
         degraded: false,
         latencyMs: Date.now() - startedAt,
       };

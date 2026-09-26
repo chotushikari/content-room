@@ -7,6 +7,7 @@ import {
   type WhyReport,
 } from '../core/domain';
 import { UNTRUSTED_CONTENT_RULE, type StructuredRequest } from './types';
+import { GROQ_MODELS } from './tasks';
 
 /**
  * The Creative Director's NARRATIVE.
@@ -33,18 +34,60 @@ export const BriefNarrativeSchema = z.object({
   top3Changes: z
     .array(
       z.object({
-        rank: z.number().int().min(1).max(3),
+        rank: z.number().int().min(1).max(6),
         change: z.string().max(300),
         expectedEffect: z.string().max(300),
-        evidence: z.array(EvidenceRefSchema).min(1),
+        /**
+         * Plain strings, not EvidenceRef objects.
+         *
+         * Asking the model for the full object — with `id`, `kind` and `ref` — was
+         * the same mistake as the why_report schema: it made a schema violation
+         * likely on every call for no benefit, since we can construct the object
+         * ourselves. The composer below turns these into evidence refs.
+         */
+        evidenceRefs: z.array(z.string().max(200)).max(4),
       }),
     )
-    .length(3),
+    .min(1)
+    .max(6),
   recommendedHook: z.string().max(400),
   recommendedCTA: z.string().max(300),
   strategy: z.string().max(1500),
 });
 export type BriefNarrative = z.infer<typeof BriefNarrativeSchema>;
+
+/**
+ * Normalise the model's narrative into the strict shape the UI consumes.
+ *
+ * Two guarantees are enforced here rather than hoped for:
+ *  - `top3Changes` is EXACTLY three, by trimming or padding from the
+ *    deterministic narrative. The earlier `.length(3)` schema rejected the whole
+ *    response when the model returned two or four, which took the run's mode to
+ *    "degraded" over a formatting detail.
+ *  - every change carries at least one evidence reference, because the UI's
+ *    promise is that a recommendation is never unsupported.
+ */
+export function composeBriefNarrative(
+  narrative: BriefNarrative,
+  fallback: BriefNarrative,
+): BriefNarrative {
+  const changes = [...narrative.top3Changes].sort((a, b) => a.rank - b.rank).slice(0, 3);
+  while (changes.length < 3) {
+    const next = fallback.top3Changes[changes.length];
+    if (!next) break;
+    changes.push({ ...next, rank: changes.length + 1 });
+  }
+
+  return {
+    ...narrative,
+    top3Changes: changes.map((c, i) => ({
+      ...c,
+      rank: i + 1,
+      evidenceRefs:
+        c.evidenceRefs.length > 0 ? c.evidenceRefs : [`changes[${i}]`],
+    })),
+  };
+}
 
 export function deterministicNarrative(
   metrics: MetricsBundle,
@@ -61,7 +104,7 @@ export function deterministicNarrative(
     dna.risks[0] ??
     `The weakest simulated metric is ${weakest?.label ?? 'attention'} at ${weakest?.value ?? 0}.`;
 
-  const evidence = (ref: string, note: string) => [{ id: `ev_${ref}`, kind: 'dna_field' as const, ref, note }];
+  const evidence = (ref: string, note: string) => [{ ref, note }];
 
   return {
     strongestSignal: signal.slice(0, 380),
@@ -74,7 +117,7 @@ export function deterministicNarrative(
       rank: i + 1,
       change: c.field,
       expectedEffect: c.reason.slice(0, 280),
-      evidence: evidence(`changes[${i}]`, c.reason.slice(0, 200)),
+      evidenceRefs: evidence(`changes[${i}]`, c.reason.slice(0, 200)).map((e) => e.ref),
     })),
     recommendedHook: rewrite.hook.slice(0, 380),
     recommendedCTA: rewrite.cta.slice(0, 280),
@@ -102,6 +145,7 @@ export function briefNarrativeRequest(
     task: 'creative_brief',
     schema: BriefNarrativeSchema,
     maxOutputTokens: 1600,
+    modelOverride: GROQ_MODELS.brief,
     instructions: [
       'You are the Creative Director in Content Room, a synthetic-audience rehearsal system.',
       'Recommend changes grounded ONLY in the supplied simulation evidence.',

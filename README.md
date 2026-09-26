@@ -13,9 +13,13 @@ before the real one sees it.
 [![React](https://img.shields.io/badge/React-19.3-087ea4?logo=react)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)](https://www.typescriptlang.org)
 [![Tests](https://img.shields.io/badge/tests-133%20passing-2ea44f)](#testing)
-[![License](https://img.shields.io/badge/license-not%20set-lightgrey)](#license)
+[![Deployed](https://img.shields.io/badge/Vercel-live%20%2C%204%2F4%20model%20calls-000?logo=vercel)](https://content-room-dun.vercel.app)
 
 </div>
+
+---
+
+> **Status.** Working end to end and deployed. The live model tier is verified in production: a full run is served by Groq across all four analysis tasks (`degraded=false`), in about 11 seconds. It also runs with **no API keys at all** — see [below](#it-works-with-no-api-keys-at-all).
 
 ---
 
@@ -181,18 +185,27 @@ npx tsx scripts/probe-model.ts   # inspect the reaction model's inputs
 
 ## API keys
 
-**You need none.** One key upgrades the *wording*; the score, the segments, the simulation and the comparison are produced by our own code either way.
+**You need none.** One key upgrades the *wording* of the analysis; the score, the segments, the simulation and the comparison come from our own code either way.
 
-| Provider | Key | Notes |
+| Provider | Key | Status |
 |---|---|---|
-| **Groq** | `GROQ_API_KEY` | Verified working. Free tier, fast. `openai/gpt-oss-120b` |
-| Google Gemini | `GOOGLE_GENERATIVE_AI_API_KEY` | Supported; this project's test key had depleted credits → 402 |
+| **Groq** | `GROQ_API_KEY` | **Verified in production** — a full run served across all four tasks |
+| Google Gemini | `GOOGLE_GENERATIVE_AI_API_KEY` | Supported; the key used during development had depleted credits → 402 |
 | OpenRouter | `OPENROUTER_API_KEY` | Any OpenAI-compatible endpoint also works |
 
-Two hard-won notes, both discovered by calling the APIs rather than trusting defaults:
+### Four things that took calling the API to discover
 
-- **Model ids drift, and a stale id fails silently.** The chain degrades to the deterministic tier, which looks like success. `gemini-2.5-flash` is no longer available to new users, and `llama-3.3-70b-versatile` is not in the current Groq model list. Both had to be fixed to models verified against the live APIs.
-- **A provider-wide failure and a request-specific failure are different things.** A 400 caused by *one* schema being incompatible with Groq's strict JSON-schema mode was first classified as provider-wide, which removed a perfectly working provider for the entire run. Now: `401/402/403` quarantine the provider, `400/404/422` skip only that request.
+Every one of these fails *silently* — the chain degrades to the deterministic tier and the run looks like it succeeded, so the badge is the only clue.
+
+1. **Model ids drift.** `gemini-2.5-flash` authenticates and still appears in the models list, but returns 404 on `generateContent` ("no longer available to new users"). `llama-3.3-70b-versatile` is not in the current Groq model list at all. Both defaults were wrong.
+
+2. **Providers demand different schema strictness.** Groq runs structured output in strict mode, which requires *every* property to be listed in `required`. One optional field made every request 400.
+
+3. **Provider-wide and request-level failures are different things.** A `400` from one incompatible schema was initially treated as provider-wide, which removed a perfectly working provider for the entire run. Now `401/402/403` quarantine the provider; `400/404/422` skip only that request. A *generation* failure ("model produced malformed JSON") is stochastic and therefore retried — a schema *definition* failure is not.
+
+4. **A valid key can still fail on billing.** Google keys authenticate fine and return `402 "prepayment credits are depleted"` when the project has billing enabled with exhausted credits — such a project does **not** fall back to the free tier.
+
+Also worth knowing: Groq's free tier applies an **org-level** tokens-per-minute limit shared across all models, so spreading tasks across different models does *not* help. Keeping per-call input budgets modest does.
 
 Full detail in [`docs/api-keys.md`](docs/api-keys.md).
 
