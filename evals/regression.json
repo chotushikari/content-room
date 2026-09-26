@@ -1,0 +1,173 @@
+{
+  "set": "regression",
+  "version": 1,
+  "createdAt": "2026-09-26",
+  "purpose": "Did we break what already worked? Frozen per-task input/output snapshots that guard against silent prompt drift. Spec: docs/validation.md §4.",
+  "runWith": "npm run eval -- --set=regression",
+  "policy": {
+    "onMismatch": "FAIL",
+    "acceptingAMismatch": "Requires `npm run eval -- --set=regression --accept=<caseId>`, which rewrites the snapshot, updates acceptedAt and acceptedBy, and MUST appear in the commit diff. A snapshot never updates implicitly.",
+    "reviewRule": "Never accept a regression snapshot change without reading the diff and stating in the commit message why the new output is correct.",
+    "whyThisExists": [
+      "Prompts, provider versions and model ids all drift silently.",
+      "Without snapshots, quality degrades gradually and nobody notices until the demo.",
+      "The guard is deliberately annoying. That is the point."
+    ],
+    "neverAcceptWhen": [
+      "A forbidden phrase from docs/validation.md §6 appears in the new output.",
+      "Confidence increased without a corresponding input change.",
+      "Risks or frictions decreased on a deliberately weak input.",
+      "Any numeric value in the output changed (numbers must not originate from a model)."
+    ]
+  },
+  "cases": [
+    {
+      "id": "reg-dna-velloe-fixture",
+      "task": "content_dna",
+      "input": { "fixture": "velloe", "kind": "social_post" },
+      "provider": "fixtures",
+      "assertions": {
+        "schemaValid": true,
+        "hookUnchanged": true,
+        "ctaUnchanged": true,
+        "strengthsCountUnchanged": true,
+        "risksCountUnchanged": true,
+        "confidenceWithin": 0.02,
+        "containsNoNewNumbers": true
+      },
+      "snapshot": null,
+      "acceptedAt": null,
+      "acceptedBy": null,
+      "note": "Populated the first time task 004 runs with --accept. Reference fixture — this snapshot is what makes the demo reproducible across prompt edits."
+    },
+    {
+      "id": "reg-segments-velloe-fixture",
+      "task": "audience_segments",
+      "input": { "fixture": "velloe", "audienceSize": 24 },
+      "provider": "fixtures",
+      "assertions": {
+        "schemaValid": true,
+        "segmentCountUnchanged": true,
+        "segmentLabelsUnchanged": true,
+        "rationalesStillContentSpecific": true
+      },
+      "snapshot": null,
+      "acceptedAt": null,
+      "acceptedBy": null,
+      "note": "Frozen in task 005. A changed segment set invalidates every stored comparison, so treat a mismatch here as significant."
+    },
+    {
+      "id": "reg-audience-population-hash",
+      "task": "audience_factory",
+      "input": { "fixture": "velloe", "audienceSeed": "velloe-v1", "audienceSize": 24 },
+      "provider": "none",
+      "assertions": {
+        "populationHashUnchanged": true,
+        "populationHashIsDeterministic": true
+      },
+      "snapshot": { "audienceId": null, "populationHash": null },
+      "acceptedAt": null,
+      "acceptedBy": null,
+      "note": "CRITICAL. If populationHash changes, every existing A/B comparison becomes invalid, because the audience is no longer the same one. Changing the persona-derivation code requires re-recording every stored comparison alongside this snapshot. Do not accept this casually.",
+      "severity": "blocker"
+    },
+    {
+      "id": "reg-engine-event-set",
+      "task": "engine_deterministic",
+      "input": { "fixture": "velloe", "rounds": 3, "seed": 42 },
+      "provider": "none",
+      "assertions": {
+        "byteIdenticalAcrossRuns": true,
+        "eventCountUnchanged": true,
+        "actionCountsUnchanged": true,
+        "stageCoverageUnchanged": true
+      },
+      "snapshot": { "eventCount": null, "actionCounts": null, "metricsDigest": null },
+      "acceptedAt": null,
+      "acceptedBy": null,
+      "note": "Frozen in task 006. Any change to coefficients, excerpts or the RNG must be a deliberate, reviewed snapshot acceptance — never a silent drift.",
+      "severity": "major"
+    },
+    {
+      "id": "reg-metrics-bundle",
+      "task": "analytics",
+      "input": { "eventSet": "reg-engine-event-set" },
+      "provider": "none",
+      "assertions": {
+        "everyMetricUnchanged": true,
+        "everyNUnchanged": true,
+        "everyMethodStringUnchanged": true
+      },
+      "snapshot": null,
+      "acceptedAt": null,
+      "acceptedBy": null,
+      "note": "Frozen in task 008. Independent of the model: aggregation is pure, so ANY change here is a code change and must be explained.",
+      "severity": "major"
+    },
+    {
+      "id": "reg-why-grounding-velloe",
+      "task": "why_report",
+      "input": { "fixture": "velloe", "metricsFixture": "velloe-a" },
+      "provider": "fixtures",
+      "assertions": {
+        "biggestSignalSummaryUnchanged": true,
+        "allEvidenceRefsStillResolve": true,
+        "noNewMetricsIntroduced": true,
+        "ungroundedClaimsRemainsEmptyOrExplained": true
+      },
+      "snapshot": null,
+      "acceptedAt": null,
+      "acceptedBy": null,
+      "note": "Frozen in task 008. Must stay consistent with reg-metrics-bundle: if the metrics change, this must change in the same acceptance."
+    },
+    {
+      "id": "reg-brief-and-versionb-velloe",
+      "task": "creative_brief",
+      "input": { "fixture": "velloe", "whyFixture": "velloe-a" },
+      "provider": "fixtures",
+      "assertions": {
+        "versionBContentHashUnchanged": true,
+        "top3ChangeCountExactly3": true,
+        "factsPreserved": true,
+        "containsNoForbiddenPhrases": true,
+        "recommendedHookUnchanged": true,
+        "recommendedCtaUnchanged": true
+      },
+      "snapshot": null,
+      "acceptedAt": null,
+      "acceptedBy": null,
+      "note": "Frozen in task 009. Never accept a change here that also drops a numeral or named entity from the original."
+    },
+    {
+      "id": "reg-comparison-headline",
+      "task": "comparison",
+      "input": { "fixture": "velloe", "runA": "reg-metrics-bundle", "runB": "reg-versionb-metrics" },
+      "provider": "none",
+      "assertions": {
+        "samePopulationTrue": true,
+        "caveatTextUnchanged": true,
+        "rowOrderUnchanged": true,
+        "allDeltasUnchanged": true
+      },
+      "snapshot": null,
+      "acceptedAt": null,
+      "acceptedBy": null,
+      "note": "CRITICAL. This is the headline result the demo presents. If a prompt or model change alters it, that is a product-visible change and must be reviewed as such — not merged as housekeeping.",
+      "severity": "blocker"
+    },
+    {
+      "id": "reg-fixture-b-differs-from-a",
+      "task": "fixtures",
+      "input": { "fixture": "velloe" },
+      "provider": "none",
+      "assertions": {
+        "versionBContentHashDiffersFromA": true,
+        "versionBMetricsDifferFromA": true
+      },
+      "snapshot": null,
+      "acceptedAt": null,
+      "acceptedBy": null,
+      "note": "A demo where nothing changes is worse than no demo. This guards the fixture itself against being collapsed into an identity."
+    }
+  ]
+}

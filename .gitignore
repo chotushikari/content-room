@@ -1,0 +1,48 @@
+# Dependencies
+node_modules/
+.pnp
+.pnp.js
+
+# Build output
+.next/
+out/
+build/
+dist/
+.vercel/
+
+# Test / eval artifacts
+coverage/
+eval-results/
+
+# Local data (FileRunStore is local-dev only)
+.data/
+
+# Environment — never commit secrets
+.env
+.env.local
+.env.*.local
+!.env.example
+
+# Logs
+*.log
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Editor / OS
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/*
+!.vscode/extensions.json
+*.swp
+
+# Python (reserved for the deferred OASIS adapter)
+__pycache__/
+*.py[cod]
+.venv/
+venv/
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts

@@ -1,0 +1,283 @@
+{
+  "set": "golden",
+  "version": 1,
+  "createdAt": "2026-09-26",
+  "purpose": "Does each AI task do its job well on ordinary, well-formed content? Assertions are structural and exact; quality is rubric-scored by a second model call. Spec: docs/validation.md §4.",
+  "runWith": "npm run eval -- --set=golden",
+  "notes": [
+    "Structural assertions must pass 100%.",
+    "Rubric scores are statistical: report a pass rate, not a boolean.",
+    "Rubric minScore 4 of 5 across all criteria.",
+    "Every case must also pass ContentDNASchema-equivalent runtime validation before any assertion runs."
+  ],
+  "cases": [
+    {
+      "id": "golden-dna-clear-strong-post",
+      "task": "content_dna",
+      "description": "A well-formed social post with explicit hook, single clear promise, and one unambiguous CTA. The model should find a real hook and CTA without inventing friction.",
+      "input": {
+        "kind": "social_post",
+        "text": "Most landing pages lose 40% of visitors before the first scroll.\n\nWe tested 120 of them. The pattern was identical: the value proposition was below the fold.\n\nWe built a 3-minute audit that shows you exactly where yours breaks.\n\nFree, no signup: [link]",
+        "expectedLanguage": "en"
+      },
+      "structuralAssertions": {
+        "schemaValid": true,
+        "hookNotEmpty": true,
+        "ctaNotEmpty": true,
+        "valuePropositionNotEmpty": true,
+        "strengthsMinItems": 1,
+        "confidenceMax": 0.9,
+        "containsNoStatistics": true,
+        "containsNoPercentageClaims": true
+      },
+      "rubric": {
+        "criteria": [
+          "hook is a specific description of this content's opening, not a generic label like 'engaging hook'",
+          "cta identifies the actual call to action ('free 3-minute audit, no signup'), not a category",
+          "valueProposition states what the reader gains, not what the content is about",
+          "potentialFrictions, if any, are specific to this text rather than universal advice",
+          "confidence is calibrated and does not exceed 0.9 for a single short input"
+        ],
+        "minScore": 4
+      }
+    },
+    {
+      "id": "golden-dna-buried-lede-article",
+      "task": "content_dna",
+      "description": "A long article whose value proposition is buried in the final third. The model should report the buried promise rather than summarising the article.",
+      "input": {
+        "kind": "article",
+        "text": "The history of content marketing is longer than most practitioners assume. Trade circulars in the 1890s performed many of the same functions as a modern newsletter, though with considerably longer lead times... [approximately 6000 characters of context and history] ...Which is why, after eleven years of running these programmes, we now recommend that teams publish the single strongest claim in the first sentence and treat everything else as supporting material.",
+        "expectedLanguage": "en"
+      },
+      "structuralAssertions": {
+        "schemaValid": true,
+        "hookNotEmpty": true,
+        "promisePositionBelow": 0.5,
+        "potentialFrictionsMinItems": 1,
+        "frictionsMentionDelayedValueOrBuriedLedee": true,
+        "isNotAGenericSummary": true,
+        "containsNoFabricatedQuotes": true
+      },
+      "rubric": {
+        "criteria": [
+          "identifies that the actual recommendation appears at the end",
+          "does not produce a neutral article summary in place of a DNA",
+          "topic is specific ('content marketing history / lede placement'), not 'marketing'",
+          "risks reflect the structural problem, not generic 'may be too long' advice",
+          "does not invent statistics absent from the input"
+        ],
+        "minScore": 4
+      }
+    },
+    {
+      "id": "golden-dna-weak-content",
+      "task": "content_dna",
+      "description": "Deliberately weak content: no hook, vague promise, three competing CTAs. The model must report the real problems rather than padding strengths.",
+      "input": {
+        "kind": "social_post",
+        "text": "Excited to share that we've been working on something new! More details coming soon. Stay tuned for updates. Follow us to learn more, check out our website, and don't forget to subscribe to our newsletter for the latest news and announcements about our journey.",
+        "expectedLanguage": "en"
+      },
+      "structuralAssertions": {
+        "schemaValid": true,
+        "hookNotEmpty": true,
+        "risksMinItems": 2,
+        "potentialFrictionsMinItems": 2,
+        "frictionsMentionVagueOrMultipleCta": true,
+        "strengthsNotPaddedToAvoidEmpty": true,
+        "doesNotClaimStrongHook": true,
+        "confidenceMax": 0.75
+      },
+      "rubric": {
+        "criteria": [
+          "names the absence of a concrete promise as a primary risk",
+          "identifies the competing CTAs as friction",
+          "does not describe this content as having a compelling hook",
+          "strengths, if listed, are genuine and minimal rather than padding",
+          "the hook field describes what the text opens with rather than flattering it"
+        ],
+        "minScore": 4
+      }
+    },
+    {
+      "id": "golden-dna-non-english",
+      "task": "content_dna",
+      "description": "Content in a language other than English. Must be handled or explicitly refused with low confidence. Silent mistranslation is a failure.",
+      "input": {
+        "kind": "social_post",
+        "text": "Nuevo estudio: el 70% de los equipos de marketing publica sin revisar el mensaje principal. Probamos un proceso de revisión de 10 minutos y el recuerdo del mensaje subió en 34 compradores de prueba.",
+        "expectedLanguage": "es"
+      },
+      "structuralAssertions": {
+        "schemaValid": true,
+        "eitherHandledInSourceLanguageOrRefused": true,
+        "ifRefusedThenConfidenceBelow": 0.4,
+        "noSilentTranslationToEnglish": true,
+        "noInventedNumbersBeyondInput": true
+      },
+      "rubric": {
+        "criteria": [
+          "DNA content is in Spanish, or the refusal is explicit",
+          "no fabricated translation presented as the original",
+          "numbers cited are exactly those in the input (70%, 10 minutes, 34)",
+          "does not claim the content is English",
+          "low confidence is reported if the model could not handle the language"
+        ],
+        "minScore": 4
+      }
+    },
+    {
+      "id": "golden-dna-metadata-only-video",
+      "task": "content_dna",
+      "description": "A video where only metadata resolved (title, channel, description stubs). The DNA must degrade gracefully and admit the limitation via low confidence.",
+      "input": {
+        "kind": "video",
+        "title": "How we cut onboarding from 14 days to 2",
+        "meta": {
+          "author": "Velloe",
+          "description": "A short breakdown of the onboarding rebuild.",
+          "platform": "youtube"
+        },
+        "text": "",
+        "partial": true
+      },
+      "structuralAssertions": {
+        "schemaValid": true,
+        "confidenceMax": 0.45,
+        "doesNotInventVisualDetail": true,
+        "doesNotInventTranscriptContent": true,
+        "topicDerivedFromTitleAndMetaOnly": true,
+        "visualStyleEmptyOrExplicitlyUnknown": true
+      },
+      "rubric": {
+        "criteria": [
+          "does not describe what happens in the video beyond the given metadata",
+          "does not fabricate a transcript or quote",
+          "confidence is appropriately low given the thin input",
+          "topic is specific ('onboarding time reduction'), not 'business video'",
+          "limitation is acknowledged rather than hidden"
+        ],
+        "minScore": 4
+      }
+    },
+    {
+      "id": "golden-dna-script",
+      "task": "content_dna",
+      "description": "A video script with stage directions. DNA should separate spoken content from direction and identify the CTA correctly.",
+      "input": {
+        "kind": "script",
+        "text": "[INT. OFFICE - DAY]\n\nSARAH: We were spending four hours a week on status updates. Four hours.\n\n[CUT TO SCREEN RECORDING]\n\nSARAH (V.O.): So we automated it. Now it's a two-minute read every Monday.\n\n[BACK TO SARAH]\n\nSARAH: I'll leave the template in the description. Steal it.",
+        "expectedLanguage": "en"
+      },
+      "structuralAssertions": {
+        "schemaValid": true,
+        "ctaNotEmpty": true,
+        "ctaIdentifiesTemplateInDescription": true,
+        "toneReflectsScriptFormat": true,
+        "doesNotTreatStageDirectionsAsSpokenClaims": true
+      },
+      "rubric": {
+        "criteria": [
+          "the CTA is identified as 'take the template from the description'",
+          "stage directions are not read as spoken lines",
+          "tone recognises a conversational video script",
+          "emotion includes something beyond 'neutral' given the repetition and emphasis",
+          "audienceSignals reflect operators or team leads, not a generic audience"
+        ],
+        "minScore": 4
+      }
+    },
+    {
+      "id": "golden-segments-content-derived",
+      "task": "audience_segments",
+      "description": "Segments must be derived from this content with a rationale, not a generic demographic split.",
+      "input": {
+        "kind": "social_post",
+        "text": "Your team's weekly status meeting is a $40,000-a-year habit. Here is the 15-minute replacement.",
+        "audienceSize": 24
+      },
+      "structuralAssertions": {
+        "schemaValid": true,
+        "segmentsMinItems": 3,
+        "segmentsMaxItems": 6,
+        "everySegmentHasNonEmptyRationale": true,
+        "everySegmentHasMinOneArchetype": true,
+        "segmentSizesSumToAudienceSize": true,
+        "noGenericDemographicOnlySegments": true
+      },
+      "rubric": {
+        "criteria": [
+          "each rationale references something specific in this content",
+          "segments are defined by stance or behaviour, not only by job title",
+          "at least one segment engages with the cost framing directly",
+          "at least one segment is plausibly skeptical or resistant",
+          "archetypes are a library drawn from, not one archetype per segment by rote"
+        ],
+        "minScore": 4
+      }
+    },
+    {
+      "id": "golden-why-attribution",
+      "task": "why_report",
+      "description": "Given computed metrics and a stratified event sample where the skeptical segment ignores the content, WHY must attribute the dominant friction to the buried value proposition and cite evidence.",
+      "input": {
+        "metricsFixture": "skeptical-segment-buried-promise",
+        "eventSample": "stratified-including-rejects"
+      },
+      "structuralAssertions": {
+        "schemaValid": true,
+        "biggestSignalEvidenceMinItems": 1,
+        "allEvidenceRefsResolve": true,
+        "topFrictionsMaxItems": 5,
+        "everyFrictionHasEvidence": true,
+        "doesNotInventMetrics": true,
+        "doesNotRestateMetricsAsExplanation": true,
+        "ungroundedClaimsReportedRatherThanInvented": true
+      },
+      "rubric": {
+        "criteria": [
+          "the biggest signal names the buried value proposition",
+          "the audience split quotes the actual computed values, unaltered",
+          "frictions are ordered by evidence strength, not narratively",
+          "no claim appears that is not traceable to a supplied event",
+          "explanation does not merely rename the metric"
+        ],
+        "minScore": 4
+      }
+    },
+    {
+      "id": "golden-brief-specific-changes",
+      "task": "creative_brief",
+      "description": "The brief must propose specific, evidence-linked changes and produce a valid Version B that preserves the original's facts.",
+      "input": {
+        "contentKind": "social_post",
+        "metricsFixture": "skeptical-segment-buried-promise",
+        "whyFixture": "buried-value-proposition"
+      },
+      "structuralAssertions": {
+        "schemaValid": true,
+        "top3ChangesExactlyLength": 3,
+        "everyChangeHasEvidence": true,
+        "versionBIsValidContentAsset": true,
+        "versionBHasFreshContentHash": true,
+        "versionBPreservesKind": true,
+        "versionBPreservesNumeralsAndEntities": true,
+        "recommendedHookNotEmpty": true,
+        "recommendedCtaIsSpecific": true,
+        "containsNoForbiddenPhrases": true,
+        "doesNotClaimRealWorldImpact": true
+      },
+      "rubric": {
+        "criteria": [
+          "the recommended hook moves the value proposition to the opening",
+          "the recommended CTA is a single specific action, not three",
+          "each of the three changes states an expected effect tied to a named metric",
+          "Version B reads as a rewrite of the original, not a new asset",
+          "no fabricated proof, statistic, or testimonial appears in Version B"
+        ],
+        "minScore": 4
+      }
+    }
+  ]
+}
