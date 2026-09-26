@@ -20,17 +20,55 @@ import type { ModelProvider, StructuredRequest, StructuredResult } from './types
  *    will not self-heal unless set.
  */
 
+/**
+ * Default model ids.
+ *
+ * VERIFIED against the live API on 2026-09-26, not chosen from memory. The
+ * previous default was `gemini-2.5-flash`, which authenticates fine and still
+ * appears in the models list, but returns 404 on `generateContent` with
+ * "no longer available to new users". That failure is silent in a fallback
+ * chain: the run simply degrades to the deterministic engine and looks like it
+ * worked. Only calling the API revealed it.
+ *
+ * Aliases like `gemini-flash-latest` also exist and survive model churn, but a
+ * pinned id is used here because run reproducibility matters — regression
+ * snapshots in evals/ should not silently change because Google moved an alias.
+ */
+const GOOGLE_DEFAULT_MODEL = 'gemini-3.8-flash';
+/**
+ * VERIFIED against the live Groq API on 2026-09-26. The previous guess,
+ * `llama-3.3-70b-versatile`, is NOT in this key's model list and would have
+ * 404'd — the same stale-model-id trap as Gemini, caught the same way: by
+ * calling the API instead of trusting a default.
+ *
+ * Available to this key: openai/gpt-oss-120b, openai/gpt-oss-20b,
+ * qwen/qwen3.8-27b, allam-2-7b. The 120b is used for quality.
+ */
+const GROQ_DEFAULT_MODEL = 'openai/gpt-oss-120b';
+
 type LiveConfig = {
   id: ProviderId;
   modelId: string;
   envKey: string;
   load: () => Promise<(modelId: string) => unknown>;
+  /**
+   * Per-provider request options.
+   *
+   * Groq runs structured output in STRICT schema mode by default, which requires
+   * every property to be listed in `required`. Our ContentDNA has an optional
+   * `span` field on frictions, so the request was rejected with a 400:
+   *   "invalid JSON schema for response_format ... must be listed in required: span"
+   * Disabling strict mode is correct here rather than reshaping the schema,
+   * because the AI SDK still validates the parsed object against the same Zod
+   * schema in this file before it is returned — so nothing unvalidated gets past.
+   */
+  providerOptions?: Record<string, Record<string, unknown>>;
 };
 
 function googleConfig(): LiveConfig {
   return {
     id: 'google',
-    modelId: process.env.CONTENT_ROOM_GOOGLE_MODEL ?? 'gemini-2.5-flash',
+    modelId: process.env.CONTENT_ROOM_GOOGLE_MODEL ?? GOOGLE_DEFAULT_MODEL,
     envKey: 'GOOGLE_GENERATIVE_AI_API_KEY',
     load: async () => {
       const mod = await import('@ai-sdk/google');
@@ -42,8 +80,9 @@ function googleConfig(): LiveConfig {
 function groqConfig(): LiveConfig {
   return {
     id: 'groq',
-    modelId: process.env.CONTENT_ROOM_GROQ_MODEL ?? 'llama-3.3-70b-versatile',
+    modelId: process.env.CONTENT_ROOM_GROQ_MODEL ?? GROQ_DEFAULT_MODEL,
     envKey: 'GROQ_API_KEY',
+    providerOptions: { groq: { strictJsonSchema: false } },
     load: async () => {
       const mod = await import('@ai-sdk/groq');
       return (modelId: string) => mod.groq(modelId);
@@ -75,7 +114,8 @@ function makeLiveProvider(config: LiveConfig): ModelProvider {
         prompt: req.prompt,
         maxOutputTokens: req.maxOutputTokens ?? 2048,
         abortSignal: req.signal,
-      });
+        ...(config.providerOptions ? { providerOptions: config.providerOptions } : {}),
+      } as Parameters<typeof generateText>[0]);
 
       // The COMPLETE output is schema-validated by the SDK; we validate again so
       // a provider that ignores the schema cannot smuggle a malformed object in.

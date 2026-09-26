@@ -1,164 +1,277 @@
+<div align="center">
+
 # Content Room
 
-> **Rehearse before you publish.**
+**Rehearse before you publish.**
 
-Content Room is an **AI-powered synthetic-audience rehearsal environment**. Put any piece of content in front of a simulated audience *before* you publish it, and find out what might happen, why it might happen, and what to change.
+Put any piece of content in front of a simulated audience and find out how it lands —<br>
+before the real one sees it.
 
-**Content goes in. A relevant audience forms. The audience reacts. The system explains why. The content improves. The same audience tests it again.**
+[**Open the live demo →**](https://content-room-dun.vercel.app)
+
+[![Next.js](https://img.shields.io/badge/Next.js-16.3.6-000?logo=nextdotjs)](https://nextjs.org)
+[![React](https://img.shields.io/badge/React-19.3-087ea4?logo=react)](https://react.dev)
+[![TypeScript](https://img.shields.io/badge/TypeScript-strict-3178c6?logo=typescript)](https://www.typescriptlang.org)
+[![Tests](https://img.shields.io/badge/tests-133%20passing-2ea44f)](#testing)
+[![License](https://img.shields.io/badge/license-not%20set-lightgrey)](#license)
+
+</div>
 
 ---
 
 ## What it does
 
-Any content — a social post, video, reel, ad, campaign, landing page, email, article, script, or launch concept.
+Paste a post, an ad, an email, a script, or a link. Content Room builds a synthetic audience from the content itself, runs them through the journey a real reader takes, and tells you what happened.
 
-1. **Ingest** — paste a URL or the content itself. Metadata is resolved where it legitimately can be; otherwise you paste, and the product stays useful rather than dead-ending.
-2. **Understand** — the content is read into a **Content DNA**: hook, topic, promise, value proposition, emotion, tone, CTA, visual style, audience signals, strengths, risks, and likely friction points.
-3. **Build a contextual audience** — the audience is *derived from the content*, not picked from a fixed list. Segments are proposed with a rationale, then expanded into a reproducible population of synthetic agents drawn from a 19-archetype library.
-4. **Run the room** — agents move through exposure → attention → interpretation → response → decision → action, emitting structured reaction events (`STOP`, `IGNORE`, `LIKE`, `COMMENT`, `SHARE`, `SAVE`, `FOLLOW`, `CLICK`, `BUY`, `REJECT`).
-5. **What happened** — deterministic aggregation into attention, ignore rate, clarity, trust, and share/save/comment/follow/click intent.
-6. **Why** — an explanation grounded in the specific events, segments and excerpts that produced the numbers. Every claim links to its evidence.
-7. **Creative Director → Version B** — strongest signal, biggest risk, highest-impact change, recommended hook and CTA, and an improved version with a change-by-change diff.
-8. **Same audience, new content, re-simulation** — Version B is tested against the **same** synthetic population, with the population hash verified, and the two runs are compared.
+You get one screen with five answers:
 
-## What it is not
+- **Is it good?** — a score out of 100 and a band: Weak / Mixed / Solid / Strong
+- **Will they like it?** — how each audience segment reacts, and which metric that segment loses it on
+- **What do you think?** — two or three sentences of plain opinion
+- **What do I change?** — three concrete changes, each with the rewritten text ready to copy
+- **Will it spread?** — Low / Moderate / High amplification potential
 
-Not a virality predictor. Not a survey. Not a replacement for real user research. It does not predict real-world reach, revenue or conversion, and it does not claim statistical representativeness.
+Then you click **Test it**, and the *same* simulated audience reacts to the rewritten version so you can see whether the room actually changed.
 
-**Every number is labelled as a simulated estimate.** The validation benchmark is *being established* — see `docs/validation.md`.
+<p align="center">
+  <img src="docs/screenshots/verdict.png" alt="The verdict: 76 out of 100, Strong, with per-segment reaction, the read, and the three changes" width="880">
+</p>
 
-## The differentiator
+## The part that matters: a controlled re-test
 
-Open-source research (`docs/research.md`, `docs/open-source.md`) found strong agent-simulation foundations — [OASIS](https://github.com/camel-ai/oasis) (Apache-2.0, 5.2k★) and [MiroFish](https://github.com/666ghj/MiroFish) (AGPL-3.0, 74k★, which itself runs on OASIS) — but **no project holds an audience fixed and re-tests improved content against it as a controlled comparison.** They simulate a world and produce a report.
+Anyone can generate a rewrite. The question a rehearsal has to answer is whether the rewrite is actually better — and answering that properly means holding the audience constant.
 
-That controlled re-test, plus honest labelling and a zero-dependency demo mode, is what Content Room adds.
+So the audience is a **fixed population**, derived from a seed. Version A and Version B run against the same agents, and the code **asserts** the population hash matches rather than trusting it. If the hash differs, the comparison is refused instead of being presented as controlled:
 
-## Why it works with no API keys
-
-The default engine is a **deterministic** simulator we own: no model calls, reproducible, order-independent. AI raises fidelity when available; it is never a precondition. The full journey completes with no keys, no network and no database — with the mode stated openly in the UI:
-
-| Badge | Meaning |
-|---|---|
-| **Live** | primary model provider served the run |
-| **Degraded: fallback model** | primary failed, a fallback served it |
-| **Demo mode: deterministic fixtures** | no keys, or all providers failed |
-
-No configuration makes a degraded run look like a live one.
-
-## Architecture in one picture
-
-```
-CONTENT → CONTENT DNA → CONTEXTUAL AUDIENCE → SIMULATION ENGINE → AgentEvent[]
-                                                                        │
-                                          ┌─────────────────────────────┤
-                                          ▼                             ▼
-                                   ANALYTICS (pure)              VALIDATION LAYER
-                                          │                       (not established)
-                                          ▼
-                                    WHY (evidence-linked)
-                                          │
-                                          ▼
-                              CREATIVE DIRECTOR → VERSION B
-                                          │
-                                          ▼
-                        SAME AUDIENCE → RE-SIMULATE → COMPARISON
+```ts
+assertSamePopulation(audience.ref, recheck);   // throws AudienceMismatchError on mismatch
 ```
 
-Full detail: `docs/architecture.md`. Frozen interfaces: `docs/api-contracts.md`.
+Every comparison carries a mandatory caveat, and which one depends on provenance:
 
-**Design rule:** AI handles language; deterministic code handles every number. Validation, aggregation, percentages, comparisons, state transitions, IDs, routing, business rules, confidence and simulation bookkeeping are all pure functions with tests. No agent theatre.
-
-## Stack
-
-| Layer | Choice |
+| Situation | What the user is told |
 |---|---|
-| Frontend | Next.js 16.3.6 (App Router) · React 19.3.0 · TypeScript strict |
-| UI | Tailwind v4.3.3 · shadcn/ui · `motion` 13.4.4 · `lucide-react` |
-| The Room | own `d3-force` + canvas component |
-| Comparison | Recharts 3.10.1 |
-| AI | Vercel AI SDK 7 (`ai@7.0.116`) · Zod 4 · Gemini primary → Groq fallback → deterministic fixtures |
-| Simulation | `DeterministicSimulationEngine` (default) · `OasisSimulationEngine` (deferred adapter) |
-| Persistence | `MemoryRunStore` (default) · `FileRunStore` (local dev only) |
-| Deploy | Vercel Hobby · Node runtime · SSE streaming, not polling |
+| Same population, reproducible engine | *"Simulated change. Same synthetic audience; population hash verified. Both runs are reproducible, so the difference is attributable to the content."* |
+| Same population, sampled reactions | *"Audience held constant. Reactions resampled."* |
+| Audience regenerated | *"WARNING: the audience was regenerated, so this is NOT a controlled comparison."* |
 
-## Getting started
+<p align="center">
+  <img src="docs/screenshots/comparison.png" alt="Before and after: Version A at 42, Version B at 76, same verified audience" width="880">
+</p>
+
+## Inside the room
+
+Every agent moves through the same six stages a real reader does — exposure → attention → interpretation → response → decision → action — and what they do is one of `STOP` `IGNORE` `LIKE` `COMMENT` `SHARE` `SAVE` `FOLLOW` `CLICK` `BUY` `REJECT`.
+
+The room encodes exactly three things and nothing else: **fill** is stage (valence once they have acted), **halo** is reaction intensity, **proximity** is segment grouping.
+
+<p align="center">
+  <img src="docs/screenshots/room.png" alt="The live room: agents clustered by segment, coloured by stage and reaction" width="880">
+</p>
+
+## It works with no API keys at all
+
+This is not a fallback. It is the default architecture.
+
+The simulation engine is deterministic and ours: no model calls, no network, no clock, no `Math.random()`. Every sampled value is derived from `(seed, agentId, round)`, which makes runs **order-independent and byte-identical across replays**.
+
+Model providers are a tier on top:
+
+```
+Gemini  →  Groq  →  deterministic heuristic
+```
+
+The final tier is not a model. It is a real analyser that reads the actual text, and because every AI task must supply a deterministic answer, *a request that could leave the user with nothing cannot be constructed in the first place*:
+
+```ts
+type StructuredRequest<T> = {
+  task: AiTaskId;
+  schema: ZodType<T>;
+  instructions: string;
+  prompt: string;
+  deterministic: () => T;   // REQUIRED — the chain can always terminate
+};
+```
+
+The result: it runs offline, on a plane, with zero configuration, and with every number labelled as simulated.
+
+## Honesty is enforced by types, not discipline
+
+The promises this product makes are properties of the schema, so a future change cannot quietly drop one:
+
+| Promise | Enforced by |
+|---|---|
+| No number without a sample size | `Metric.n` is required |
+| No number claims to be real-world data | `Metric.kind` is the literal `'simulated_estimate'` |
+| No comparison without a caveat | `Comparison.caveats` has `min(1)` |
+| No explanation without evidence | `WhyReport.biggestSignal.evidence` has `min(1)` |
+| No unvalidated accuracy claim | `ValidationStatus` reports `'not_established'`, and the calibrated branch requires `n` and a named method |
+
+There is no benchmark. Nothing here has ever been compared against a real-world outcome, so the app says so on every screen rather than inventing a number.
+
+**This is a rehearsal environment, not a prediction engine.** It is very good at telling you which of two versions of your own content a given audience prefers. It is not evidence about the real world.
+
+## Architecture
+
+```
+                        ┌──────────────────────────────┐
+   URL / pasted text ──►│  INGEST (SSRF-guarded)       │
+                        │  metadata → article → paste  │
+                        └──────────────┬───────────────┘
+                                       ▼  ContentAsset
+                        ┌──────────────────────────────┐
+                        │  CONTENT DNA      (AI)       │
+                        └──────────────┬───────────────┘
+                                       ▼
+                        ┌──────────────────────────────┐
+                        │  CONTEXTUAL AUDIENCE         │
+                        │  AI proposes segments,       │
+                        │  seeded code builds agents   │
+                        └──────────────┬───────────────┘
+                                       ▼  AudienceRef{populationHash}
+                        ┌──────────────────────────────┐
+                        │  SIMULATION ENGINE (streams) │
+                        │  deterministic │ oasis†      │
+                        └──────────────┬───────────────┘
+                                       ▼  AgentEvent[]
+                        ┌──────────────────────────────┐
+                        │  ANALYTICS   (pure, no AI)   │
+                        └──────────────┬───────────────┘
+                          ┌────────────┴────────────┐
+                          ▼                         ▼
+                   WHY (AI, grounded)        VALIDATION
+                          │                   (not established)
+                          ▼
+                  CREATIVE DIRECTOR → VERSION B
+                          ▼
+              SAME AUDIENCE → RE-SIMULATE → COMPARISON
+
+† OASIS is a deferred post-MVP adapter — see docs/architecture.md §9
+```
+
+**The rule that holds it together:** AI handles language; deterministic code handles every number. Validation, aggregation, percentages, comparisons, IDs, state transitions and business rules are pure functions with tests. No metric in this product originates from a language model.
+
+### The interface is event-sourced
+
+One append-only `RunEventLog` is the only source of truth. One **pure** reducer derives all display state. Every panel is a projection of it, which means a result **cannot appear before its cause** — the station rail unlocks from events, not from a step counter. The console beside the room shows every frame as it arrives, with the gap since the previous one.
+
+600-event runs are batched into animation frames rather than rendered per event, so the room animates smoothly. The raw event console, the per-type ledger and the reaction feed are part of the product — a simulation you cannot inspect is not persuasive. Details in [`docs/event-driven-ui.md`](docs/event-driven-ui.md).
+
+## Quick start
 
 ```bash
 npm install
-cp .env.example .env.local     # all keys optional — the app runs without any
+cp .env.example .env.local     # every key is optional
 npm run dev
 ```
 
-Open http://localhost:3000 and either paste a URL, paste content, or load the Velloe demo scenario.
+Open http://localhost:3000 and either paste something or press **Review it** with the box empty to load the worked example.
 
-## Commands
+### Commands
 
 ```bash
-npm run dev          # local dev
-npm run build        # production build
-npm run typecheck    # tsc --noEmit
-npm run lint
-npm run test         # deterministic unit + contract + security tests
-npm run eval         # AI capability evaluation against evals/
-npm run demo         # run the Velloe scenario headlessly, print stage timings
+npm run dev         # local dev
+npm run build       # production build
+npm run typecheck   # tsc --noEmit
+npm run test        # 133 deterministic + contract + security tests
+npm run demo        # headless full run with stage timings
+npm run preflight   # everything a demo needs checked, before you present
+npx tsx scripts/probe-model.ts   # inspect the reaction model's inputs
 ```
+
+## API keys
+
+**You need none.** One key upgrades the *wording*; the score, the segments, the simulation and the comparison are produced by our own code either way.
+
+| Provider | Key | Notes |
+|---|---|---|
+| **Groq** | `GROQ_API_KEY` | Verified working. Free tier, fast. `openai/gpt-oss-120b` |
+| Google Gemini | `GOOGLE_GENERATIVE_AI_API_KEY` | Supported; this project's test key had depleted credits → 402 |
+| OpenRouter | `OPENROUTER_API_KEY` | Any OpenAI-compatible endpoint also works |
+
+Two hard-won notes, both discovered by calling the APIs rather than trusting defaults:
+
+- **Model ids drift, and a stale id fails silently.** The chain degrades to the deterministic tier, which looks like success. `gemini-2.5-flash` is no longer available to new users, and `llama-3.3-70b-versatile` is not in the current Groq model list. Both had to be fixed to models verified against the live APIs.
+- **A provider-wide failure and a request-specific failure are different things.** A 400 caused by *one* schema being incompatible with Groq's strict JSON-schema mode was first classified as provider-wide, which removed a perfectly working provider for the entire run. Now: `401/402/403` quarantine the provider, `400/404/422` skip only that request.
+
+Full detail in [`docs/api-keys.md`](docs/api-keys.md).
 
 ## Documentation
 
-| File | Contents |
+| Document | Contents |
 |---|---|
-| [`AGENTS.md`](AGENTS.md) | **Operating contract for contributors. Read this first.** |
-| [`docs/verdict.md`](docs/verdict.md) | **The score, the opinion, the changes, the viral read** |
-| [`docs/api-keys.md`](docs/api-keys.md) | **Which API keys are needed (one, and it is optional)** |
-| [`docs/product.md`](docs/product.md) | What we build, who for, what we refuse to build |
-| [`docs/user-journey.md`](docs/user-journey.md) | The six stations and the screen inventory |
-| [`docs/event-driven-ui.md`](docs/event-driven-ui.md) | How the interface works: event log → reducer → panels |
-| [`docs/architecture.md`](docs/architecture.md) | Layers, data flow, determinism, security, deviations |
-| [`docs/api-contracts.md`](docs/api-contracts.md) | **Frozen domain contracts** — the source of truth |
-| [`docs/research.md`](docs/research.md) | Open-source research with sources for every claim |
-| [`docs/open-source.md`](docs/open-source.md) | Reuse decisions and the license risk register |
-| [`docs/simulation.md`](docs/simulation.md) | The reaction model, reproducibility, and its limitations |
+| [`docs/verdict.md`](docs/verdict.md) | How the score, the opinion, the changes and the viral read are computed |
+| [`docs/event-driven-ui.md`](docs/event-driven-ui.md) | The event log, the reducer, and why a panel cannot precede its cause |
+| [`docs/architecture.md`](docs/architecture.md) | Layers, data flow, determinism contract, security boundaries |
+| [`docs/api-contracts.md`](docs/api-contracts.md) | **Frozen Zod contracts** — the interface everything else builds against |
+| [`docs/simulation.md`](docs/simulation.md) | The reaction model, and an honest list of its limitations |
 | [`docs/validation.md`](docs/validation.md) | Correctness vs predictive validity; what we can and cannot claim |
-| [`docs/ui-ux.md`](docs/ui-ux.md) | Design tokens, the Room specification, the copy guide |
+| [`docs/research.md`](docs/research.md) | Open-source research, with a source for every claim |
+| [`docs/open-source.md`](docs/open-source.md) | Reuse decisions and the license risk register |
+| [`docs/api-keys.md`](docs/api-keys.md) | Which keys are needed, and what breaks without them |
+| [`docs/product.md`](docs/product.md) | What this is, who it is for, what it refuses to be |
+| [`docs/ui-ux.md`](docs/ui-ux.md) | Design tokens, the room specification, the copy guide |
 | [`docs/deployment.md`](docs/deployment.md) | Vercel constraints and the deploy checklist |
 | [`docs/demo.md`](docs/demo.md) | The 90-second script and the failure matrix |
+| [`AGENTS.md`](AGENTS.md) | Operating contract for contributors |
 
-## Status
+## Testing
 
-Working end to end, and verified in a real browser.
+**133 tests**, deterministic and offline — no live network calls, no model calls in the suite.
 
-| Area | State |
-|---|---|
-| Deterministic engine, analysis, aggregation, comparison | **Built and tested** (100 tests) |
-| Event-driven interface (log, reducer, console, room, panels) | **Built and browser-verified** |
-| Content DNA, contextual audience, WHY, Creative Director, Version B | **Built** (heuristic tier; model tier wired but unexercised here) |
-| Same-audience re-simulation with hash assertion | **Built and verified** |
-| URL ingestion with SSRF guard | **Built and tested**; resolves public metadata only |
-| Live model providers (Gemini → Groq) | **Wired, not exercised** — no API key is configured in this environment |
-| OASIS adapter | **Not built** (deliberately deferred, `docs/architecture.md` §9) |
-| Predictive validation | **Not established**, and reported as such |
+```bash
+npm run test
+```
 
-### Honest caveats
+What they actually protect:
 
-- The simulation coefficients are hand-authored hypotheses, never fitted to real outcomes.
-- The offline rewrite and the offline analyser share a feature model, so part of Version B's improvement is guaranteed by construction. Stated in `docs/simulation.md` §8.6.
-- No live-model run has been performed here, because no relevant API key exists in this environment.
+- **Determinism** — byte-identical output across runs; order-independence proven, not assumed
+- **The same-audience guarantee** — identical `populationHash` for a given seed, and a thrown `AudienceMismatchError` when it differs
+- **Model sensitivity** — deliberately weak content must score *below* deliberately strong content, and a run where every agent approves **fails**. Unanimity means the model has become a rubber stamp, so it is treated as a bug rather than a good result
+- **Analytics purity** — with metrics recomputed independently in the test rather than by calling the implementation
+- **SSRF** — loopback, RFC1918, link-local (including cloud metadata), IPv6 and IPv4-mapped forms, credential-bearing URLs, non-HTTP schemes, and hostile Unicode, all blocked, with `URL_BLOCKED` and `IMPORT_FAILED` indistinguishable so the endpoint is not a network probe
+- **Schema obligations** — the five promises in the table above, each asserted to be *unconstructable* when violated
+- **Ingest robustness** — attribute-order-independent metadata parsing, numeric HTML entities, and a link-density gate that rejects navigation pages
+
+## Deployment
+
+Deployed on Vercel's free tier. Route handlers run on Node with `maxDuration = 120` and stream results as server-sent events.
+
+Streaming rather than polling is a forced design, not a preference: on the free tier, cron has a one-per-day minimum interval and `waitUntil` promises are cancelled at the invocation deadline, so there is **nowhere durable for a detached job to live**. The simulation therefore runs inside the request the browser is already consuming.
+
+One consequence worth knowing: serverless instances do not share memory, so the re-simulation request carries back the context it received, and the population hash is re-derived and asserted server-side regardless. Tested in production with a deliberately bogus run id to prove it does not depend on instance reuse.
+
+## Known limitations
+
+Stated here rather than only in the code:
+
+1. **The simulation coefficients are hand-authored hypotheses.** They were reasoned out, not fitted to any observed outcome. There is no benchmark.
+2. **The offline rewrite and the offline analyser share a feature model.** `heuristicRewrite` moves forward the sentence `extractFeatures` identifies as the value proposition, so part of Version B's improvement is guaranteed by construction. The live model path does not have this circularity. See [`docs/simulation.md`](docs/simulation.md) §8.6.
+3. **`attention` measures engagement across all rounds**, so it answers "did they engage at all", not "did the opening work".
+4. **URL import is metadata-and-article only.** Instagram, LinkedIn and Facebook are refused outright rather than scraped, because their terms prohibit it. YouTube yields title and description, not a transcript — there is no sanctioned no-auth path to captions.
+5. **No durable run history.** Free-tier serverless has no writable filesystem, so a mid-run refresh restarts that run.
+6. **The live model path is newly exercised.** It works — verified `mode: live` with Groq — but it has far less test coverage than the deterministic path, which is the default for a reason.
 
 ## Prior art
 
-Content Room builds on the shoulders of excellent open-source work, and borrows patterns rather than code:
+Content Room builds on excellent open-source work, and borrows patterns rather than code:
 
-- **[OASIS](https://github.com/camel-ai/oasis)** (Apache-2.0) — the `trace(user_id, created_at, action, info)` event-log shape and the social action vocabulary. Available behind a deferred adapter.
-- **[MiroFish](https://github.com/666ghj/MiroFish)** (AGPL-3.0) — architectural and UI reference for the pipeline and the report view. **No code copied**, out of respect for its license.
+- **[OASIS](https://github.com/camel-ai/oasis)** (Apache-2.0) — the `trace(user_id, created_at, action, info)` event-log shape that our `AgentEvent` mirrors, so a future OASIS adapter is a pure field mapping. Deferred as an out-of-process adapter.
+- **[MiroFish](https://github.com/666ghj/MiroFish)** (AGPL-3.0) — architectural and UI reference for the pipeline and the event-driven monitoring view. **No code copied**, out of respect for its license despite it being strong validation of the category.
 - **[Vercel AI SDK](https://ai-sdk.dev)** (Apache-2.0) — structured generation and provider abstraction.
-- **[shadcn/ui](https://ui.shadcn.com)**, **[d3](https://d3js.org)**, **[Recharts](https://recharts.org)**, **[motion](https://motion.dev)** — UI foundations.
+- **[Readability](https://github.com/mozilla/readability)** + **[linkedom](https://github.com/WebReflection/linkedom)** — article extraction, lazily loaded.
+- **[d3-force](https://github.com/d3/d3-force)**, **[Tailwind CSS](https://tailwindcss.com)**, **[Motion](https://motion.dev)**, **[Lucide](https://lucide.dev)** — the interface.
 
-## Honesty statement
+Research found that no existing open-source project holds an audience fixed and re-tests improved content against it as a controlled comparison. That gap is what this is built around.
 
-Synthetic agents are not people. This is a rehearsal system, not a substitute for real audience research.
+## License
 
-Nothing in this product fabricates statistical representativeness, survey validity, accuracy percentages, real-world lift, or guaranteed virality or conversion. Where we have no data, we say so — in the type system, in the interface, and in this file.
+Not yet chosen. The dependency set is MIT / ISC / Apache-2.0 throughout, and no AGPL or GPL code was copied, so the choice is open — add a `LICENSE` file before publishing.
 
 ---
 
+<div align="center">
+
 *We don't just generate content. We let you rehearse it.*
+
+</div>

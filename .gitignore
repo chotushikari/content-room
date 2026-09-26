@@ -47,5 +47,16 @@ venv/
 *.tsbuildinfo
 next-env.d.ts
 
+# Vercel CLI state
 .vercel
-.env*
+
+# Environment — never commit secrets.
+#
+# NOTE: the negation MUST come last. Something appended a bare `.env*` below the
+# earlier `!.env.example` line, and because the later pattern wins that would
+# have silently re-ignored the template. `git ls-files` would still show it as
+# tracked, so the breakage would only surface the day someone re-added the file.
+.env
+.env.*
+.env.local
+!.env.example

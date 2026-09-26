@@ -1,5 +1,13 @@
 import { describe, expect, it } from 'vitest';
-import { assertUrlSafe, extractMetadata, importFromManual, UrlBlockedError } from '../src/ingest';
+import {
+  assertUrlSafe,
+  decodeEntities,
+  extractMetadata,
+  importFromManual,
+  importFromUrl,
+  UrlBlockedError,
+} from '../src/ingest';
+import { extractArticle } from '../src/ingest/article';
 import { computeContentHash } from '../src/core/ids';
 
 /**
@@ -91,6 +99,122 @@ describe('metadata extraction', () => {
 
   it('returns nothing rather than inventing metadata', () => {
     expect(extractMetadata('<html><body>no head</body></html>')).toEqual({});
+  });
+});
+
+describe('entity decoding', () => {
+  it('decodes named entities', () => {
+    expect(decodeEntities('Tom &amp; Jerry &mdash; a study')).toBe('Tom & Jerry — a study');
+  });
+
+  it('decodes numeric decimal references', () => {
+    expect(decodeEntities('caf&#233; &#8212; open')).toBe('café — open');
+  });
+
+  it('decodes numeric hex references', () => {
+    // Facebook returned raw escapes like this into the UI before the fix.
+    expect(decodeEntities('&#x92a;&#x930;')).toBe('\u092a\u0930');
+  });
+
+  it('leaves unknown entities alone rather than mangling them', () => {
+    expect(decodeEntities('&notarealentity;')).toBe('&notarealentity;');
+  });
+
+  it('strips zero-width and bidi characters that arrived entity-encoded', () => {
+    // decodeEntities only decodes; stripping invisible characters is sanitize's
+    // job, and extractMetadata applies both in that order so an ENCODED
+    // zero-width space is decoded and then removed.
+    const meta = extractMetadata('<meta name="description" content="safe&#x200b;text&#x202e;">');
+    expect(meta.description).toBe('safetext');
+  });
+});
+
+describe('metadata extraction is attribute-order independent', () => {
+  // The original regex-based extractor required `name` to precede `content`, so
+  // a page with the attributes the other way round yielded an empty description.
+  // Wikipedia — one of the most predictable sites on the web — came back with a
+  // title and no body at all.
+  it('reads name-then-content', () => {
+    const meta = extractMetadata('<meta name="description" content="first order">');
+    expect(meta.description).toBe('first order');
+  });
+
+  it('reads content-then-name', () => {
+    const meta = extractMetadata('<meta content="reversed order" name="description">');
+    expect(meta.description).toBe('reversed order');
+  });
+
+  it('reads property-based tags in either order', () => {
+    expect(extractMetadata('<meta property="og:title" content="A">').title).toBe('A');
+    expect(extractMetadata('<meta content="B" property="og:title">').title).toBe('B');
+  });
+
+  it('accepts single-quoted and unquoted attributes', () => {
+    expect(extractMetadata("<meta name='description' content='single'>").description).toBe('single');
+    expect(extractMetadata('<meta name=description content=unquoted>').description).toBe('unquoted');
+  });
+
+  it('prefers og:title over twitter:title over the title tag', () => {
+    const html = `<title>Tag title</title>
+      <meta name="twitter:title" content="Twitter title">
+      <meta property="og:title" content="Og title">`;
+    expect(extractMetadata(html).title).toBe('Og title');
+  });
+});
+
+describe('platforms that prohibit automated reading', () => {
+  // Instagram, LinkedIn and Facebook are not fetched at all. Fetching them to
+  // scrape a login wall would violate their terms and produce nothing useful.
+  it.each([
+    ['linkedin', 'https://www.linkedin.com/feed/'],
+    ['instagram', 'https://www.instagram.com/p/CabcDEF/'],
+    ['facebook', 'https://www.facebook.com/somepage'],
+  ])('refuses %s without making a request', async (platform, url) => {
+    const started = Date.now();
+    const { asset, note } = await importFromUrl(url);
+    const elapsed = Date.now() - started;
+
+    expect(asset.importedBy).toBe(`${platform}-refused-importer`);
+    expect(asset.partial).toBe(true);
+    expect(asset.title).toBe('');
+    // No network round-trip happened, so this is effectively instant.
+    expect(elapsed).toBeLessThan(500);
+    expect(note).toContain('does not permit automated reading');
+    expect(note).toContain('did not request the page');
+  });
+});
+
+describe('article extraction quality gate', () => {
+  it('rejects a page that is mostly links, and accepts real prose', async () => {
+    // This is the discriminator that took measurement to find. bbc.com/news
+    // returned 6,800 characters of navigation and MDN returned 20,000 chars of
+    // code, and their sentence punctuation was identical (1.3 per 1,000). Link
+    // density separates them: an index is mostly links, an article is not.
+    const navLinks = Array.from(
+      { length: 60 },
+      (_, i) => `<li><a href="/s${i}">Section ${i} News Sport Business Technology</a></li>`,
+    ).join('');
+    const navPage = `<html><body><nav><ul>${navLinks}</ul></nav><div id="content">${navLinks}</div></body></html>`;
+
+    const navResult = await extractArticle(navPage);
+    expect(navResult === null || navResult.text.length < 400).toBe(true);
+  });
+
+  it('accepts an article whose text is real prose', async () => {
+    const paragraph =
+      'The Fetch API provides an interface for fetching resources across the network. ' +
+      'It is a more powerful and flexible replacement for XMLHttpRequest. ' +
+      'A request is made, and a response is returned as a promise. '.repeat(6);
+    const articlePage = `<html><body><article><h1>Fetch API</h1><p>${paragraph}</p></article></body></html>`;
+
+    const result = await extractArticle(articlePage);
+    expect(result).not.toBeNull();
+    expect(result?.text.length).toBeGreaterThan(200);
+  });
+
+  it('never throws on malformed HTML', async () => {
+    const result = await extractArticle('<html><body><p>unclosed <<< >></body>');
+    expect(result === null || typeof result.text === 'string').toBe(true);
   });
 });
 

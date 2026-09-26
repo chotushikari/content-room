@@ -1,6 +1,7 @@
 import { lookup } from 'node:dns/promises';
 import type { ContentAsset, Platform } from '../core/domain';
 import { computeContentHash, contentAssetId } from '../core/ids';
+import { extractArticle, shouldExtractArticle } from './article';
 
 /**
  * Content ingestion.
@@ -150,16 +151,15 @@ export async function assertUrlSafe(raw: string): Promise<URL> {
 // Metadata-only extraction (no headless browser, no scraping of post bodies)
 // ---------------------------------------------------------------------------
 
-const META_PATTERNS: Array<[keyof MetaResult | 'title', RegExp]> = [
-  ['title', /<meta[^>]+property=["']og:title["'][^>]+content=["']([^"']*)["']/i],
-  ['title', /<meta[^>]+name=["']twitter:title["'][^>]+content=["']([^"']*)["']/i],
-  ['title', /<title[^>]*>([^<]*)<\/title>/i],
-  ['description', /<meta[^>]+property=["']og:description["'][^>]+content=["']([^"']*)["']/i],
-  ['description', /<meta[^>]+name=["']description["'][^>]+content=["']([^"']*)["']/i],
-  ['image', /<meta[^>]+property=["']og:image["'][^>]+content=["']([^"']*)["']/i],
-  ['author', /<meta[^>]+property=["']article:author["'][^>]+content=["']([^"']*)["']/i],
-  ['siteName', /<meta[^>]+property=["']og:site_name["'][^>]+content=["']([^"']*)["']/i],
-];
+/**
+ * Metadata extraction.
+ *
+ * Implemented as a small attribute parser rather than a list of regexes, because
+ * the regex approach broke on real pages: it required `name` to appear before
+ * `content`, so a page with the attributes in the other order silently yielded an
+ * empty description. Wikipedia — one of the most predictable sites on the web —
+ * came back with a title and no body at all.
+ */
 
 type MetaResult = {
   title?: string;
@@ -169,27 +169,126 @@ type MetaResult = {
   siteName?: string;
 };
 
-function decodeEntities(s: string): string {
-  return s
-    .replace(/&amp;/g, '&')
-    .replace(/&lt;/g, '<')
-    .replace(/&gt;/g, '>')
-    .replace(/&quot;/g, '"')
-    .replace(/&#39;/g, "'")
-    .replace(/&nbsp;/g, ' ');
+type MetaTag = Record<string, string>;
+
+function parseMetaTags(html: string): MetaTag[] {
+  const tags: MetaTag[] = [];
+  const tagRe = /<meta\b([^>]*)>/gi;
+  const attrRe = /([a-zA-Z:_-]+)\s*=\s*(?:"([^"]*)"|'([^']*)'|([^\s"'>]+))/g;
+
+  let tagMatch: RegExpExecArray | null;
+  while ((tagMatch = tagRe.exec(html)) !== null) {
+    const attrs = tagMatch[1] ?? '';
+    const record: MetaTag = {};
+    let attrMatch: RegExpExecArray | null;
+    attrRe.lastIndex = 0;
+    while ((attrMatch = attrRe.exec(attrs)) !== null) {
+      const key = (attrMatch[1] ?? '').toLowerCase();
+      const value = attrMatch[2] ?? attrMatch[3] ?? attrMatch[4] ?? '';
+      if (key) record[key] = value;
+    }
+    if (Object.keys(record).length > 0) tags.push(record);
+  }
+  return tags;
+}
+
+/** Strip characters that have no business being in a title or description. */
+function sanitize(value: string): string {
+  return value
+    // eslint-disable-next-line no-control-regex
+    .replace(/[\u0000-\u0008\u000b\u000c\u000e-\u001f\u007f]/g, '')
+    .replace(/[\u200b-\u200f\u202a-\u202e\u2060\ufeff]/g, '')
+    .replace(/\s+/g, ' ')
+    .trim();
+}
+
+const NAMED_ENTITIES: Record<string, string> = {
+  amp: '&',
+  lt: '<',
+  gt: '>',
+  quot: '"',
+  apos: "'",
+  nbsp: ' ',
+  mdash: '—',
+  ndash: '–',
+  hellip: '…',
+  rsquo: '\u2019',
+  lsquo: '\u2018',
+  ldquo: '\u201c',
+  rdquo: '\u201d',
+  middot: '·',
+  laquo: '«',
+  raquo: '»',
+};
+
+/**
+ * Decode HTML entities, including NUMERIC references.
+ *
+ * The previous version only handled a handful of named entities, so a Facebook
+ * page rendered its description into the UI as raw `&#x92a;&#x930;` escapes.
+ */
+export function decodeEntities(input: string): string {
+  return input
+    .replace(/&#x([0-9a-f]{1,6});/gi, (whole, hex: string) => {
+      const code = Number.parseInt(hex, 16);
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? safeFromCodePoint(code) : whole;
+    })
+    .replace(/&#(\d{1,7});/g, (whole, dec: string) => {
+      const code = Number.parseInt(dec, 10);
+      return Number.isFinite(code) && code > 0 && code <= 0x10ffff ? safeFromCodePoint(code) : whole;
+    })
+    .replace(/&([a-z]+);/gi, (whole, name: string) => NAMED_ENTITIES[name.toLowerCase()] ?? whole);
+}
+
+function safeFromCodePoint(code: number): string {
+  try {
+    return String.fromCodePoint(code);
+  } catch {
+    return '';
+  }
 }
 
 export function extractMetadata(html: string): MetaResult {
+  const tags = parseMetaTags(html);
   const out: MetaResult = {};
-  for (const [key, pattern] of META_PATTERNS) {
-    if (out[key as keyof MetaResult]) continue;
-    const m = html.match(pattern);
-    const captured = m?.[1];
-    if (captured && captured.trim()) {
-      (out as Record<string, string>)[key as string] = decodeEntities(captured.trim()).slice(0, 500);
+
+  /**
+   * Find a meta value by its identifier, honouring the given order of preference.
+   *
+   * The identifier lives in `property`, `name` or `itemprop` depending on the
+   * page, and the value always lives in `content`. Looking the identifier up as
+   * if it were a key — which the first version of this parser did — matched
+   * nothing at all and silently produced empty descriptions on every site.
+   */
+  const find = (keys: string[]): string | undefined => {
+    for (const key of keys) {
+      for (const tag of tags) {
+        const identifier = (tag['property'] ?? tag['name'] ?? tag['itemprop'] ?? '').toLowerCase();
+        if (identifier !== key) continue;
+        const raw = tag['content'] ?? tag['value'] ?? '';
+        if (!raw.trim()) continue;
+        const value = sanitize(decodeEntities(raw)).slice(0, 500);
+        if (value) return value;
+      }
     }
-  }
+    return undefined;
+  };
+
+  out.title = find(['og:title', 'twitter:title']) ?? extractTitleTag(html);
+  out.description = find(['og:description', 'twitter:description', 'description']);
+  out.image = find(['og:image', 'og:image:url', 'twitter:image']);
+  out.author = find(['article:author', 'author', 'og:article:author']);
+  out.siteName = find(['og:site_name', 'application-name']);
+
   return out;
+}
+
+function extractTitleTag(html: string): string | undefined {
+  const match = html.match(/<title[^>]*>([\s\S]*?)<\/title>/i);
+  const raw = match?.[1];
+  if (!raw) return undefined;
+  const value = sanitize(decodeEntities(raw)).slice(0, 500);
+  return value || undefined;
 }
 
 function platformFor(hostname: string): Platform {
@@ -275,9 +374,47 @@ export type ImportResult = {
   note?: string;
 };
 
+/**
+ * Platforms whose terms prohibit automated reading.
+ *
+ * We do NOT fetch these at all. Instagram's robots.txt prohibits collection by
+ * automated means without written permission, and LinkedIn and Facebook are the
+ * same in practice. Fetching them anyway to scrape a login wall would be both a
+ * terms violation and useless — testing showed Instagram returns a bare
+ * "Instagram" title and Facebook returns someone's profile name and mangled
+ * entities.
+ *
+ * Refusing up front is faster, honest, and sends the user straight to the path
+ * that actually works: pasting the content.
+ */
+const REFUSED_PLATFORMS = new Set<Platform>(['instagram', 'linkedin', 'facebook']);
+
+function refusedNote(platform: Platform): string {
+  return `${platform} does not permit automated reading, so we did not request the page. Paste the content and we will take it from there.`;
+}
+
 export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
   const url = await assertUrlSafe(rawUrl);
   const platform = platformFor(url.hostname);
+
+  // Refuse before making any request.
+  if (REFUSED_PLATFORMS.has(platform)) {
+    const base = {
+      kind: 'social_post' as const,
+      source: { type: 'url' as const, url: url.toString(), platform },
+      title: '',
+      body: '',
+      media: [],
+      meta: { platform, refused: 'terms' },
+      partial: true,
+      importedBy: `${platform}-refused-importer`,
+    };
+    const hash = computeContentHash(base);
+    return {
+      asset: { ...base, id: contentAssetId(hash, base.kind), contentHash: hash },
+      note: refusedNote(platform),
+    };
+  }
 
   let html: string;
   try {
@@ -289,37 +426,66 @@ export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
   }
 
   const meta = extractMetadata(html);
-  const body = [meta.description, meta.author ? `By ${meta.author}.` : '']
+  const kind = kindForPlatform(platform);
+
+  let body = [meta.description, meta.author ? `By ${meta.author}.` : '']
     .filter(Boolean)
     .join('\n\n')
     .slice(0, 2000);
 
+  let extracted: { title?: string; byline?: string } = {};
+
+  // Second stage, lazily: when metadata gave us almost nothing and this looks
+  // like an article, read the actual page text. This is what turns a title-only
+  // import into something the analysis can work with.
+  if (shouldExtractArticle(body.length, kind)) {
+    const article = await extractArticle(html);
+    if (article && article.text.length > body.length) {
+      body = article.text.slice(0, 19_000);
+      extracted = { title: article.title, byline: article.byline };
+    }
+  }
+
   const base = {
-    kind: 'social_post' as const,
+    kind,
     source: { type: 'url' as const, url: url.toString(), platform },
-    title: meta.title ?? '',
+    title: (meta.title ?? extracted.title ?? '').slice(0, 300),
     body,
     media: meta.image ? [{ kind: 'image' as const, url: meta.image }] : [],
     meta: Object.fromEntries(
-      Object.entries(meta).filter(([, v]) => typeof v === 'string') as Array<[string, string]>,
+      Object.entries({
+        ...meta,
+        ...(extracted.byline ? { byline: extracted.byline } : {}),
+      }).filter(([, v]) => typeof v === 'string') as Array<[string, string]>,
     ),
-    // Metadata only. The post body itself is not available through any
-    // sanctioned free path, so this is a NORMAL state, not a failure.
-    partial: true,
+    // Metadata plus, where available, the article body. The post body for a
+    // social platform is not available through any sanctioned free path, so a
+    // metadata-only result is a NORMAL state, not a failure.
+    partial: body.length < 400,
     importedBy: `${platform}-metadata-importer`,
   };
   const hash = computeContentHash(base);
 
-  const supported = platform !== 'instagram' && platform !== 'linkedin' && platform !== 'facebook';
-
   return {
     asset: { ...base, id: contentAssetId(hash, base.kind), contentHash: hash },
-    note: platform === 'linkedin' || platform === 'instagram' || platform === 'facebook'
-      ? `${platform} does not permit automated reading, so nothing was extracted. Paste the content and we will take it from there.`
-      : supported && meta.title
-        ? 'We read the headline and thumbnail only. Paste the caption text for a sharper rehearsal.'
-        : 'We could not read that page. Paste the content and we will take it from there.',
+    note:
+      base.partial
+        ? 'We could not read much from that page. Paste the content and we will take it from there.'
+        : 'We read the page text, not the original post. Paste the exact wording for a sharper read.',
   };
+}
+
+/**
+ * Infer the content kind from where it came from.
+ *
+ * A YouTube link is a video, a Vimeo link is a video, a generic page is an
+ * article. Importing everything as a social post made the DNA analysis judge a
+ * blog page by the wrong length norms.
+ */
+function kindForPlatform(platform: Platform): ContentAsset['kind'] {
+  if (platform === 'youtube' || platform === 'vimeo' || platform === 'tiktok') return 'video';
+  if (platform === 'spotify') return 'brand_message';
+  return 'article';
 }
 
 export function importFromManual(input: {

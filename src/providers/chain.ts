@@ -4,6 +4,41 @@ import { liveProviders } from './live';
 import type { AiTaskId, ModelProvider, StructuredRequest, StructuredResult } from './types';
 
 /**
+ * Classify a provider failure.
+ *
+ *  - `retry`     — transient; one more attempt is worth the latency (429, 5xx).
+ *  - `skip`      — terminal for THIS request only; move on without retrying and
+ *                  without blaming the provider (400 bad schema, 404, 422).
+ *  - `quarantine`— the provider itself is unusable for this run (401, 402, 403:
+ *                  auth, billing, permission).
+ *
+ * The distinction between `skip` and `quarantine` matters, and getting it wrong
+ * cost real debugging time: a 400 caused by ONE schema being incompatible with
+ * Groq's strict mode was treated as provider-wide, so Groq was removed for the
+ * entire run and every task silently fell to the deterministic tier. A
+ * request-specific rejection must not disable a working provider.
+ */
+type FailureClass = 'retry' | 'skip' | 'quarantine';
+
+function classify(error: unknown): FailureClass {
+  const status = (error as { statusCode?: number })?.statusCode;
+  if (typeof status === 'number') {
+    if ([401, 402, 403].includes(status)) return 'quarantine';
+    if ([400, 404, 422].includes(status)) return 'skip';
+    return 'retry'; // 408, 429, 5xx
+  }
+
+  const message = String((error as { message?: string })?.message ?? '').toLowerCase();
+  if (/credit|billing|permission|unauthor|invalid api key|api key not valid/.test(message)) {
+    return 'quarantine';
+  }
+  if (/invalid json schema|schema|no longer available|not found|model_not_found/.test(message)) {
+    return 'skip';
+  }
+  return 'retry';
+}
+
+/**
  * The provider chain: live -> fallback -> deterministic heuristic.
  *
  * The Vercel AI SDK has NO built-in cross-provider error fallback (verified by
@@ -17,6 +52,8 @@ export class ProviderChain {
   private readonly providers: ModelProvider[];
   private readonly usage: ProviderUsage[];
   private readonly forceDemo: boolean;
+  /** Providers that failed terminally; skipped for the rest of this run. */
+  private readonly quarantined = new Set<string>();
 
   constructor(options: { forceDemo?: boolean } = {}) {
     this.providers = liveProviders();
@@ -32,11 +69,12 @@ export class ProviderChain {
    * configuration problem.
    */
   async generate<T>(req: StructuredRequest<T>): Promise<StructuredResult<T>> {
-    const candidates = this.forceDemo ? [] : this.providers.filter((p) => p.available);
+    const candidates = this.forceDemo
+      ? []
+      : this.providers.filter((p) => p.available && !this.quarantined.has(p.id));
 
     for (const provider of candidates) {
-      // One retry per provider: transient 429s and malformed single responses
-      // are common enough that a retry is worth more than an immediate demotion.
+      // One retry ONLY for transient failures.
       for (let attempt = 0; attempt < 2; attempt++) {
         try {
           const result = await provider.generate(req);
@@ -44,7 +82,18 @@ export class ProviderChain {
           return result;
         } catch (error) {
           if (req.signal?.aborted) throw error;
-          if (attempt === 1) break; // demote to the next provider
+
+          const failure = classify(error);
+          if (failure === 'quarantine') {
+            // Provider-wide problem: stop offering it for the rest of the run.
+            this.quarantined.add(provider.id);
+            break;
+          }
+          if (failure === 'skip') {
+            // This request will not succeed here; try the next provider.
+            break;
+          }
+          if (attempt === 1) break; // transient and still failing: demote
         }
       }
     }
