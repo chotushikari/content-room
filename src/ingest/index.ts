@@ -517,7 +517,7 @@ export async function importFromUrl(rawUrl: string): Promise<ImportResult> {
     asset: { ...base, id: contentAssetId(hash, base.kind), contentHash: hash },
     note:
       base.partial
-        ? 'We could not read much from that page. Paste the content and we will take it from there.'
+        ? 'We could only read part of that page. Paste the text below to analyse the full thing.'
         : 'We read the page text, not the original post. Paste the exact wording for a sharper read.',
   };
 }

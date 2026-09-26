@@ -10,7 +10,7 @@ before the real one sees it.
 [**Live demo →**](https://content-room-dun.vercel.app) &nbsp;·&nbsp; [Architecture](docs/architecture.md) &nbsp;·&nbsp; [Contracts](docs/api-contracts.md) &nbsp;·&nbsp; [Research](docs/research.md)
 
 [![CI](https://github.com/chotushikari/content-room/actions/workflows/ci.yml/badge.svg)](https://github.com/chotushikari/content-room/actions/workflows/ci.yml)
-[![Tests](https://img.shields.io/badge/tests-145%20passing-2ea44f)](#testing)
+[![Tests](https://img.shields.io/badge/tests-151%20passing-2ea44f)](#testing)
 [![License](https://img.shields.io/badge/license-MIT-blue)](LICENSE)
 [![Next.js](https://img.shields.io/badge/Next.js-16.3.6-000?logo=nextdotjs)](https://nextjs.org)
 [![React](https://img.shields.io/badge/React-19.3-087ea4?logo=react)](https://react.dev)
@@ -29,7 +29,7 @@ Everything below is checkable. This is the fast path.
 git clone https://github.com/chotushikari/content-room.git
 cd content-room
 npm install
-npm run verify     # typecheck + 145 tests + production build, no API keys needed
+npm run verify     # typecheck + 151 tests + production build, no API keys needed
 ```
 
 `npm run verify` should finish green in about 30 seconds. It ran in CI on every push — see the badge above.
@@ -239,7 +239,7 @@ src/
 ├── server/                  the run pipeline — the only layer that composes
 └── fixtures/velloe/         the demo scenario (a fixture, never the domain)
 
-tests/       145 deterministic tests — contracts, core, security, ingest, agents
+tests/       151 deterministic tests — contracts, core, security, ingest, agents
 evals/       golden / regression / adversarial AI-capability fixtures
 docs/        13 documents — research, architecture, contracts, simulation, validation
 tasks/       13 task specs used to build this
@@ -262,7 +262,7 @@ Open http://localhost:3000 and either paste something, or press **Review it** wi
 npm run dev         # local dev server
 npm run build       # production build
 npm run verify      # typecheck + tests + build
-npm run test        # 145 deterministic tests
+npm run test        # 151 deterministic tests
 npm run demo        # headless full run with stage timings
 npm run preflight   # everything a demo needs checked, before you present
 npm run probe       # inspect the reaction model's inputs and sensitivity
@@ -293,7 +293,7 @@ Full detail in [`docs/api-keys.md`](docs/api-keys.md).
 
 ## Testing
 
-**145 tests**, deterministic and offline — no live network calls and no model calls in the suite, so CI needs no secrets and cannot go red for external reasons.
+**151 tests**, deterministic and offline — no live network calls and no model calls in the suite, so CI needs no secrets and cannot go red for external reasons.
 
 ```bash
 npm run test
@@ -324,7 +324,7 @@ Stated here rather than only in the code:
 1. **The simulation coefficients are hand-authored hypotheses.** They were reasoned out, not fitted to any observed outcome. There is no benchmark.
 2. **The offline rewrite and the offline analyser share a feature model.** `heuristicRewrite` moves forward the sentence `extractFeatures` identifies as the value proposition, so part of Version B's improvement is guaranteed by construction. The live model path does not have this circularity. See [`docs/simulation.md`](docs/simulation.md) §8.6.
 3. **`attention` measures engagement across all rounds**, so it answers "did they engage at all", not "did the opening work".
-4. **URL import is metadata-and-article only.** Instagram, LinkedIn and Facebook are refused outright rather than scraped, because their terms prohibit it. YouTube yields title and description, not a transcript — there is no sanctioned no-auth path to captions.
+4. **URL import reads text, not social posts.** Instagram, LinkedIn and Facebook are refused outright because their terms prohibit automated reading; X, TikTok and Threads are refused because they only serve posts to a logged-in browser (verified: an x.com post returns HTTP 404 even from its own oEmbed endpoint). Other unreadable links degrade to the paste path rather than failing. YouTube yields title and description, not a transcript — there is no sanctioned no-auth path to captions. **Images are shown but not read**, because the configured models are text-only; alt text is extracted and used. See [`docs/api-keys.md`](docs/api-keys.md).
 5. **The live model path has far less test coverage than the deterministic path**, which is the default for exactly that reason.
 6. **Per-agent confidence is the simulation's own resolution**, not a probability that the agent is right about the real world. It is labelled accordingly wherever it is shown.
 
