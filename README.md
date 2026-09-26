@@ -110,6 +110,7 @@ npm run demo         # run the Velloe scenario headlessly, print stage timings
 | [`AGENTS.md`](AGENTS.md) | **Operating contract for contributors. Read this first.** |
 | [`docs/product.md`](docs/product.md) | What we build, who for, what we refuse to build |
 | [`docs/user-journey.md`](docs/user-journey.md) | The six stations and the screen inventory |
+| [`docs/event-driven-ui.md`](docs/event-driven-ui.md) | **How the interface works: event log → reducer → panels** |
 | [`docs/architecture.md`](docs/architecture.md) | Layers, data flow, determinism, security, deviations |
 | [`docs/api-contracts.md`](docs/api-contracts.md) | **Frozen domain contracts** — the source of truth |
 | [`docs/research.md`](docs/research.md) | Open-source research with sources for every claim |
@@ -119,6 +120,27 @@ npm run demo         # run the Velloe scenario headlessly, print stage timings
 | [`docs/ui-ux.md`](docs/ui-ux.md) | Design tokens, the Room specification, the copy guide |
 | [`docs/deployment.md`](docs/deployment.md) | Vercel constraints and the deploy checklist |
 | [`docs/demo.md`](docs/demo.md) | The 90-second script and the failure matrix |
+
+## Status
+
+Working end to end, and verified in a real browser.
+
+| Area | State |
+|---|---|
+| Deterministic engine, analysis, aggregation, comparison | **Built and tested** (100 tests) |
+| Event-driven interface (log, reducer, console, room, panels) | **Built and browser-verified** |
+| Content DNA, contextual audience, WHY, Creative Director, Version B | **Built** (heuristic tier; model tier wired but unexercised here) |
+| Same-audience re-simulation with hash assertion | **Built and verified** |
+| URL ingestion with SSRF guard | **Built and tested**; resolves public metadata only |
+| Live model providers (Gemini → Groq) | **Wired, not exercised** — no API key is configured in this environment |
+| OASIS adapter | **Not built** (deliberately deferred, `docs/architecture.md` §9) |
+| Predictive validation | **Not established**, and reported as such |
+
+### Honest caveats
+
+- The simulation coefficients are hand-authored hypotheses, never fitted to real outcomes.
+- The offline rewrite and the offline analyser share a feature model, so part of Version B's improvement is guaranteed by construction. Stated in `docs/simulation.md` §8.6.
+- No live-model run has been performed here, because no relevant API key exists in this environment.
 
 ## Prior art
 

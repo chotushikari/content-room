@@ -24,7 +24,7 @@ Companion to `docs/research.md` (which holds the evidence and URLs). This file h
 | **motion** | MIT | **USE** | Animation (`motion/react`) | `framer-motion` mirror |
 | **lucide-react** | ISC | **USE** | Icons | — |
 | **d3-force** | ISC | **USE** | The live room force layout | Full `d3` bundle |
-| **Recharts** | MIT | **USE** | Before/after comparison charts | — |
+| **Recharts** | MIT | **REJECT** | — | Was planned for the comparison panel, then dropped: two aligned columns of monospaced numbers compare faster than two bars, and it kept a charting dependency out of the page bundle. The comparison is rendered as tabular rows. |
 | **open-graph-scraper** | MIT | **USE** | OG/Twitter-card metadata | — |
 | **cheerio** | MIT | **USE** | JSON-LD + oEmbed `<link>` discovery | — |
 | **@mozilla/readability** | Apache-2.0 | **USE** | Article body extraction (lazy-loaded) | — |

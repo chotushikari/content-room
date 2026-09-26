@@ -1,0 +1,138 @@
+@import 'tailwindcss';
+
+/* ---------------------------------------------------------------------------
+   Content Room design tokens — dark-first "premium research control room".
+   OKLCH throughout. No hex literals in components (enforced by tests).
+   --------------------------------------------------------------------------- */
+@theme {
+  --color-bg: oklch(0.145 0.005 260);
+  --color-surface: oklch(0.19 0.006 260);
+  --color-surface2: oklch(0.235 0.007 260);
+  --color-line: oklch(0.3 0.008 260);
+  --color-line-soft: oklch(0.25 0.007 260);
+
+  --color-fg: oklch(0.97 0.002 260);
+  --color-muted: oklch(0.73 0.006 260);
+  --color-subtle: oklch(0.58 0.008 260);
+
+  --color-accent: oklch(0.72 0.15 250);
+  --color-accent-dim: oklch(0.55 0.1 250);
+  --color-positive: oklch(0.76 0.14 160);
+  --color-negative: oklch(0.68 0.17 25);
+  --color-caution: oklch(0.81 0.14 85);
+
+  --font-sans: var(--font-geist-sans), ui-sans-serif, system-ui, sans-serif;
+  --font-mono: var(--font-geist-mono), ui-monospace, SFMono-Regular, monospace;
+
+  --text-2xs: 0.6875rem;
+  --text-3xs: 0.625rem;
+}
+
+html,
+body {
+  background: var(--color-bg);
+  color: var(--color-fg);
+  -webkit-font-smoothing: antialiased;
+}
+
+body {
+  font-family: var(--font-sans);
+}
+
+/* Numerals must align down a column: metrics and the console depend on it. */
+.tabular {
+  font-family: var(--font-mono);
+  font-variant-numeric: tabular-nums;
+  font-feature-settings: 'tnum' 1;
+}
+
+/* Short labels only: 2-3 words, uppercase, tracked. */
+.micro {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-subtle);
+}
+
+/*
+ * Sentence-length supporting text.
+ *
+ * Deliberately NOT `micro`: uppercase monospace is a label style, and rendering
+ * a full sentence like the validation note that way reads as shouting and is
+ * harder to read at 10px. Honesty notes should be legible, not decorative.
+ */
+.note {
+  font-family: var(--font-mono);
+  font-size: var(--text-3xs);
+  line-height: 1.65;
+  letter-spacing: 0;
+  text-transform: none;
+  color: var(--color-subtle);
+}
+
+/* Subtle grid: reads as instrumentation without adding visual noise. */
+.grid-field {
+  background-image:
+    linear-gradient(to right, color-mix(in oklab, var(--color-line) 40%, transparent) 1px, transparent 1px),
+    linear-gradient(to bottom, color-mix(in oklab, var(--color-line) 40%, transparent) 1px, transparent 1px);
+  background-size: 28px 28px;
+}
+
+.focus-ring:focus-visible {
+  outline: 2px solid var(--color-accent);
+  outline-offset: 2px;
+}
+
+/* Scrollbars, kept quiet so they do not shout next to the data. */
+.scroll-thin {
+  scrollbar-width: thin;
+  scrollbar-color: var(--color-line) transparent;
+}
+.scroll-thin::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+.scroll-thin::-webkit-scrollbar-thumb {
+  background: var(--color-line);
+  border-radius: 4px;
+}
+.scroll-thin::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+@keyframes cr-pulse-ring {
+  0% {
+    box-shadow: 0 0 0 0 color-mix(in oklab, var(--color-accent) 55%, transparent);
+  }
+  100% {
+    box-shadow: 0 0 0 12px transparent;
+  }
+}
+
+@keyframes cr-enter {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: none;
+  }
+}
+
+.animate-enter {
+  animation: cr-enter 180ms ease-out both;
+}
+
+/* Motion is decorative. Reduced motion switches state directly and the
+   reaction feed carries the narrative on its own. */
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}

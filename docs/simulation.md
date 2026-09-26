@@ -137,8 +137,13 @@ It is reported **per metric with its `bySegment` breakdown**, never as a single 
 3. **Text heuristics are crude.** `clarity` and `hookStrength` are keyword-and-structure proxies, and are wrong about fresh or unusual formats.
 4. **Cross-round social effects are modelled, not observed.**
 5. **Excerpts are generated, not quoted.** Reaction excerpts in the deterministic engine are composed from templates over DNA fragments and traits. They are illustrative synthetic fragments and must never be presented as things anyone said.
+6. **The deterministic rewrite and the deterministic analyser share a feature model.** This is the most important caveat to state plainly: `heuristicRewrite` moves forward the sentence that `extractFeatures` identifies as the value proposition, and the metrics score the same features. So part of Version B's improvement is *guaranteed by construction* rather than discovered. The live model path does not share this circularity, and the size of the effect is visible in the comparison rows (a rewrite that improved everything would be a warning sign of exactly this). It is a property of the offline tier, and it is why the offline tier is labelled as heuristic rather than validated.
 
-The user-facing consequence is the copy discipline in `docs/ui-ux.md` §7, and the `ValidationStatus` of `'not_established'` on every run.
+The user-facing consequence is the copy discipline in `docs/ui-ux.md` §7 and the `ValidationStatus` of `'not_established'` on every run.
+
+### 8.1 A metric worth reading carefully
+
+`attention` counts agents that reached the interpretation stage **in any round**. Because an agent that drops at the hook in round 1 can still engage in round 2, this metric is much less discriminative than a per-round hook-pass rate. It answers "did this audience engage at all", not "did the opening work". Both are useful; they are not the same question, and the current metric answers only the first.
 
 ## 9. The OASIS engine (deferred, post-MVP)
 

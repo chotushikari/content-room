@@ -1,0 +1,42 @@
+{
+  "name": "content-room",
+  "version": "0.1.0",
+  "private": true,
+  "scripts": {
+    "dev": "next dev",
+    "build": "next build",
+    "start": "next start",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "demo": "tsx scripts/demo.ts",
+    "preflight": "tsx scripts/preflight.ts"
+  },
+  "dependencies": {
+    "@ai-sdk/google": "^4.0.82",
+    "@ai-sdk/groq": "^4.0.50",
+    "ai": "^7.0.116",
+    "clsx": "^2.1.1",
+    "d3-force": "^3.0.0",
+    "d3-selection": "^3.0.0",
+    "lucide-react": "^1.48.0",
+    "motion": "^13.4.4",
+    "next": "^16.3.6",
+    "react": "^19.3.0",
+    "react-dom": "^19.3.0",
+    "tailwind-merge": "^3.7.0",
+    "zod": "^4.6.5"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.3",
+    "@types/d3-force": "^3.0.10",
+    "@types/d3-selection": "^3.0.11",
+    "@types/node": "^24.0.0",
+    "@types/react": "^19.0.0",
+    "@types/react-dom": "^19.0.0",
+    "tailwindcss": "^4.3.3",
+    "tsx": "^4.19.2",
+    "typescript": "^5.7.0",
+    "vitest": "^3.0.0"
+  }
+}
